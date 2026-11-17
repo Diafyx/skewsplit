@@ -62,11 +62,11 @@ jobs:
       - id: select
         env:
           EVENT: ${{ github.event_name }}
-          GROUPS: ${{ steps.filter.outputs.changes || '[]' }}
+          MATCHED_GROUPS: ${{ steps.filter.outputs.changes || '[]' }}
           LABELS: ${{ steps.labels.outputs.labels || '[]' }}
           FULL: ${{ inputs.full && 'true' || 'false' }}
         run: |
-          args=(--event "$EVENT" --groups "$GROUPS" --labels "$LABELS")
+          args=(--event "$EVENT" --groups "$MATCHED_GROUPS" --labels "$LABELS")
           if [[ "$FULL" == true ]]; then args+=(--full); fi
           python3 scripts/ci_select.py "${args[@]}"
 

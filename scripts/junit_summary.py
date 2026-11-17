@@ -52,7 +52,9 @@ def collect(paths: list[Path]) -> Totals:
 def render(title: str, totals: Totals) -> str:
     """Format the totals as Markdown."""
     passed = totals.tests - totals.failed - totals.skipped
-    mark = "❌" if totals.failed else "✅"
+    # Emoji shortcodes keep the output ASCII, so printing it works on any
+    # console (Windows uses cp1252 before Python 3.15); GitHub renders them.
+    mark = ":x:" if totals.failed else ":white_check_mark:"
     lines = [
         f"### {mark} {title}",
         "",

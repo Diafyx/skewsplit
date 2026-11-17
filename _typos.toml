@@ -1,0 +1,4 @@
+[files]
+extend-exclude = ["uv.lock", "Cargo.lock", "LICENSE"]
+
+[default.extend-words]

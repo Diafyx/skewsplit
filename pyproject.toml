@@ -1,0 +1,129 @@
+# Workspace root. The package itself is in python/pyproject.toml.
+# Tool configuration lives here so it applies to the whole repository.
+
+[tool.uv]
+required-version = ">=0.13"
+
+[tool.uv.workspace]
+members = ["python"]
+
+[dependency-groups]
+# Test tools. Python 3.9 and 3.10 are past their upstream support, so their
+# CI legs get the last releases of these tools that still install there.
+test = [
+  "coverage[toml]>=7.17; python_version>='3.11'",
+  "coverage[toml]>=7.16,<7.17; python_version=='3.10'",
+  "coverage[toml]>=7.10.7,<7.11; python_version<'3.10'",
+  "hypothesis>=6.170; python_version>='3.11'",
+  "hypothesis>=6.168,<6.169; python_version=='3.10'",
+  "hypothesis>=6.141,<6.142; python_version<'3.10'",
+  "pytest>=9.2; python_version>='3.10'",
+  "pytest>=8.4.2,<9; python_version<'3.10'",
+  "pytest-benchmark>=5.3; python_version>='3.10'",
+  "pytest-benchmark>=5.2.3,<5.3; python_version<'3.10'",
+  "pytest-randomly>=5.1; python_version>='3.11'",
+  "pytest-randomly>=5.0,<5.1; python_version=='3.10'",
+  "pytest-randomly>=4.0.1,<5; python_version<'3.10'",
+]
+# Lint, type and packaging tools. They run on the newest Python only.
+lint = [
+  "actionlint-py>=1.7.12; python_version>='3.11'",
+  "diff-cover>=11.0; python_version>='3.11'",
+  "mypy>=2.4; python_version>='3.11'",
+  "pre-commit-hooks>=6.0; python_version>='3.11'",
+  "ruff>=0.17.5; python_version>='3.11'",
+  "twine>=7.0; python_version>='3.11'",
+  "typos>=1.52; python_version>='3.11'",
+  "zizmor>=1.32; python_version>='3.11'",
+]
+dev = [{ include-group = "test" }, { include-group = "lint" }]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+src = ["python/src", "python/tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "COM812", # conflicts with the formatter
+  "CPY001", # the licence header is in LICENSE, not in every file
+  "D203",   # conflicts with D211
+  "D213",   # conflicts with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"python/tests/**" = [
+  "D",       # test names are the documentation
+  "INP001",  # pytest imports tests in importlib mode, no __init__.py needed
+  "PLR2004", # literal values are the point of a test
+  "S101",    # pytest uses assert
+]
+"scripts/**" = [
+  "T201", # scripts report with print
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+# mypy 2 cannot target 3.9. Ruff checks 3.9 syntax (target-version above) and
+# the 3.9 CI leg runs every test there.
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+files = ["python/src", "python/tests", "scripts"]
+mypy_path = "python/src"
+
+[tool.pytest.ini_options]
+minversion = "8.4"
+testpaths = ["python/tests"]
+# A plain `pytest` runs the fast kinds only. The make targets for PostgreSQL
+# and Spark pass their own -m, which replaces this one.
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--import-mode=importlib",
+  "-m",
+  "unit or property",
+]
+markers = [
+  "unit: fast tests with no external services",
+  "property: Hypothesis property tests",
+  "integration: needs PostgreSQL (CI only)",
+  "spark: needs Spark and Java (CI only)",
+  "slow: takes more than a few seconds",
+]
+filterwarnings = ["error"]
+junit_family = "xunit2"
+xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source_pkgs = ["skewsplit"]
+relative_files = true
+
+[tool.coverage.paths]
+skewsplit = ["python/src/skewsplit", "*/site-packages/skewsplit"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+# These replace coverage.py's defaults on purpose: a bare "pragma: no cover"
+# excludes nothing. Every exclusion must give its reason on the same line,
+# after "--", for example "# pragma: no cover -- only reached on Windows".
+exclude_lines = [
+  '#\s*pragma: no cover -- \S',
+  '^\s*if TYPE_CHECKING:',
+  '^\s*@overload',
+]
+partial_branches = ['#\s*pragma: no branch -- \S']
+
+[tool.coverage.xml]
+output = "reports/coverage.xml"

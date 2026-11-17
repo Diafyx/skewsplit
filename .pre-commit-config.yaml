@@ -1,0 +1,51 @@
+# Local hooks run the tools pinned in uv.lock, so versions have one source and
+# Dependabot keeps them current. Install with: uvx pre-commit install
+default_install_hook_types: [pre-commit]
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: typos
+        name: typos
+        entry: uv run --frozen typos --force-exclude
+        language: system
+        types: [text]
+        require_serial: true
+      - id: end-of-file-fixer
+        name: fix end of files
+        entry: uv run --frozen end-of-file-fixer
+        language: system
+        types: [text]
+        exclude: ^(uv\.lock|Cargo\.lock)$
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        entry: uv run --frozen trailing-whitespace-fixer --markdown-linebreak-ext=md
+        language: system
+        types: [text]
+        exclude: ^(uv\.lock|Cargo\.lock)$
+      - id: check-yaml
+        name: check yaml
+        entry: uv run --frozen check-yaml
+        language: system
+        types: [yaml]
+      - id: actionlint
+        name: actionlint
+        entry: uv run --frozen actionlint
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+      - id: zizmor
+        name: zizmor
+        entry: uv run --frozen zizmor --offline
+        language: system
+        files: ^\.github/(workflows/.*\.ya?ml|actions/.*/action\.ya?ml|dependabot\.ya?ml)$

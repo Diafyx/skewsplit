@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+title: "[Feature] "
+labels: ["type/feature", "status/triage"]
+body:
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Search before asking
+      options:
+        - label: I searched the existing issues and found nothing similar.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Usage scenario
+      description: A concrete example, such as a table shape, a column type or a command.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues
+      description: Links to related issues or discussions, if any.
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Are you willing to submit a PR?
+      options:
+        - label: Yes, I am willing to submit a PR.
+  - type: checkboxes
+    id: coc
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

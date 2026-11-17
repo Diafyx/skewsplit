@@ -2,10 +2,10 @@
 
 Usage: python scripts/pr_hygiene.py [EVENT_FILE]
 
-Reads the pull_request event (default: ``$GITHUB_EVENT_PATH``), looks up the
-linked issues through the GitHub API, and lists every broken rule with what to
-do about it. The list goes to stderr and to ``$GITHUB_STEP_SUMMARY``. Exits 1
-if any rule is broken.
+Reads the pull request named in the pull_request event (default:
+``$GITHUB_EVENT_PATH``) and its linked issues through the GitHub API, and
+lists every broken rule with what to do about it. The list goes to stderr and
+to ``$GITHUB_STEP_SUMMARY``. Exits 1 if any rule is broken.
 """
 
 from __future__ import annotations
@@ -228,21 +228,29 @@ def pull_request_from_event(event: dict[str, Any]) -> PullRequest:
     )
 
 
-def fetch_issue(repo: str, number: int, token: str) -> Issue | None:
-    """Look up an issue through the GitHub API; None if it does not exist."""
+def _get(path: str, token: str) -> dict[str, Any] | None:
+    """GET a GitHub REST API path; None if it does not exist."""
     api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     request = urllib.request.Request(  # noqa: S310 -- the API URL comes from the runner
-        f"{api}/repos/{repo}/issues/{number}",
+        f"{api}/{path}",
         headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 -- as above
-            data = json.load(response)
+            data: dict[str, Any] = json.load(response)
     except urllib.error.HTTPError as error:
         error.close()
         if error.code == 404:  # noqa: PLR2004 -- HTTP Not Found
             return None
         raise
+    return data
+
+
+def fetch_issue(repo: str, number: int, token: str) -> Issue | None:
+    """Look up an issue through the GitHub API; None if it does not exist."""
+    data = _get(f"repos/{repo}/issues/{number}", token)
+    if data is None:
+        return None
     milestone = data.get("milestone") or {}
     return Issue(
         number=number,
@@ -250,6 +258,20 @@ def fetch_issue(repo: str, number: int, token: str) -> Issue | None:
         is_pull_request="pull_request" in data,
         milestone=milestone.get("title"),
     )
+
+
+def fetch_pull_request(repo: str, number: int, token: str) -> PullRequest:
+    """Read the pull request as it is now, not as the triggering event saw it.
+
+    Creating a pull request with labels and a milestone fires several events
+    within a second or two. Reading the current state lets every run see the
+    finished pull request, so no run has to be cancelled or fail early.
+    """
+    data = _get(f"repos/{repo}/pulls/{number}", token)
+    if data is None:
+        msg = f"pull request #{number} not found in {repo}"
+        raise LookupError(msg)
+    return pull_request_from_event({"pull_request": data})
 
 
 def render(problems: list[str]) -> str:
@@ -262,12 +284,13 @@ def render(problems: list[str]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Check the pull request in the event file."""
+    """Check the pull request named in the event file."""
     args = sys.argv[1:] if argv is None else argv
     event_path = Path(args[0] if args else os.environ["GITHUB_EVENT_PATH"])
-    pr = pull_request_from_event(json.loads(event_path.read_text(encoding="utf-8")))
+    event = json.loads(event_path.read_text(encoding="utf-8"))
     repo = os.environ["GITHUB_REPOSITORY"]
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+    pr = fetch_pull_request(repo, int(event["pull_request"]["number"]), token)
     numbers = [] if is_exempt_bot(pr) else linked_issues(pr.body)
     problems = check(pr, {n: fetch_issue(repo, n, token) for n in numbers})
     text = render(problems)

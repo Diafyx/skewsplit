@@ -3,16 +3,16 @@ name: PR hygiene
 # Checks the pull request rules: title, branch name, linked open issue, labels,
 # milestone and template headings (scripts/pr_hygiene.py). Runs again whenever
 # one of those can change.
-on:
+on: # zizmor: ignore[concurrency-limits] -- see the note below
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled, milestoned, demilestoned]
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No concurrency group on purpose: the script reads the pull request's current
+# state, so every run checks the finished pull request. Cancelling older runs
+# would leave "cancelled" entries that GitHub counts as failing checks.
 
 jobs:
   pr-hygiene:
@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: read
       issues: read # reads the linked issues' state and milestone
+      pull-requests: read # reads the pull request's current title, labels and milestone
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

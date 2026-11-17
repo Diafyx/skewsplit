@@ -33,6 +33,7 @@ check: lint py-unit coverage packaging docs
 
 check-all: check py-lowest
 
+# ruff, mypy, spelling, workflow audits, and the issue forms against GitHub's schemas.
 lint: check-filters
 	$(UV_RUN) ruff check
 	$(UV_RUN) ruff format --check
@@ -40,6 +41,11 @@ lint: check-filters
 	$(UV_RUN) typos
 	$(UV_RUN) actionlint
 	$(UV_RUN) zizmor $(ZIZMOR_FLAGS) .github
+	$(UV_RUN) check-jsonschema --builtin-schema vendor.github-issue-forms \
+		.github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml \
+		.github/ISSUE_TEMPLATE/task.yml
+	$(UV_RUN) check-jsonschema --builtin-schema vendor.github-issue-config \
+		.github/ISSUE_TEMPLATE/config.yml
 
 # Every tracked file must match a group in .github/filters.yml.
 check-filters:

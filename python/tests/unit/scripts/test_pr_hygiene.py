@@ -7,7 +7,7 @@ import urllib.error
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -212,7 +212,7 @@ def test_a_human_cannot_borrow_a_bot_branch_name() -> None:
 # Event payload, API and main
 
 
-def event(pr: PullRequest) -> dict[str, object]:
+def event(pr: PullRequest) -> dict[str, Any]:
     return {
         "pull_request": {
             "title": pr.title,
@@ -282,12 +282,22 @@ def test_fetch_issue_raises_on_server_errors() -> None:
         pr_hygiene.fetch_issue("o/r", 500, "t")
 
 
+def serve_pull_request(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pr: PullRequest) -> Path:
+    """Serve ``pr`` as pull request #7 and write a stale event that names it."""
+    monkeypatch.setitem(ISSUES, "/repos/o/r/pulls/7", event(pr)["pull_request"])
+    stale = replace(GOOD, labels=frozenset(), milestone=None)  # as the "opened" event saw it
+    payload = event(stale)
+    payload["pull_request"]["number"] = 7
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 @pytest.mark.usefixtures("api")
-def test_main_passes_and_writes_the_summary(
+def test_main_checks_the_current_pull_request_not_the_event_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = tmp_path / "event.json"
-    path.write_text(json.dumps(event(GOOD)), encoding="utf-8")
+    path = serve_pull_request(monkeypatch, tmp_path, GOOD)
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
     assert pr_hygiene.main([str(path)]) == 0
@@ -299,8 +309,7 @@ def test_main_passes_and_writes_the_summary(
 def test_main_fails_and_explains_each_problem(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = tmp_path / "event.json"
-    path.write_text(json.dumps(event(replace(GOOD, body="Closes #5"))), encoding="utf-8")
+    path = serve_pull_request(monkeypatch, tmp_path, replace(GOOD, body="Closes #5"))
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(path))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert pr_hygiene.main([]) == 1
@@ -309,6 +318,28 @@ def test_main_fails_and_explains_each_problem(
     assert "- Branch issue #3 is not linked" in err
     assert "- #5 is closed" in err
     assert err.count("Restore the template heading") == len(HEADINGS)
+
+
+@pytest.mark.usefixtures("api")
+def test_a_missing_pull_request_is_an_error() -> None:
+    with pytest.raises(LookupError, match="pull request #404 not found in o/r"):
+        pr_hygiene.fetch_pull_request("o/r", 404, "t")
+
+
+# PULL_REQUEST_TEMPLATE.md
+
+
+def test_the_template_has_exactly_the_headings_pr_hygiene_checks() -> None:
+    template = (REPO / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    headings = tuple(line for line in template.splitlines() if line.startswith("### "))
+    assert headings == HEADINGS
+
+
+def test_the_unfilled_template_fails_only_on_the_issue_link() -> None:
+    template = (REPO / ".github" / "PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8")
+    pr = replace(GOOD, body=template)
+    assert linked_issues(template) == []
+    assert pr_hygiene.check_template(pr) == []
 
 
 # .github/labels.yml

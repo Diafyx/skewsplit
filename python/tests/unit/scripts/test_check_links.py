@@ -38,6 +38,11 @@ def test_links_skip_code_spans_and_fenced_blocks() -> None:
     ]
 
 
+def test_links_include_both_targets_of_a_badge() -> None:
+    text = "[![CI](https://x.invalid/badge.svg)](https://x.invalid/workflow) [a](b.md)"
+    assert links(text) == ["https://x.invalid/badge.svg", "https://x.invalid/workflow", "b.md"]
+
+
 def test_anchors_follow_github_slugs_with_duplicate_suffixes() -> None:
     text = "# Hello, World!\n## Why is this PR large?\n## Same name\n## Same name\n# Closed #\n"
     assert anchors(text) == {

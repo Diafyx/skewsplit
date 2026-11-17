@@ -26,7 +26,9 @@ TOO_MANY_REQUESTS = 429
 USER_AGENT = "skewsplit-link-check"
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _CODE_SPAN = re.compile(r"(`+).+?\1")
-_LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)|<(https?://[^>\s]+)>")
+# Every "](target)" is a link target, which also catches the outer link of a
+# badge such as [![CI](badge.svg)](workflow), plus <https://...> autolinks.
+_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)|<(https?://[^>\s]+)>")
 _HEADING = re.compile(r"^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$")
 
 

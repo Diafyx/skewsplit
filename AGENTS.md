@@ -1,0 +1,51 @@
+# Instructions for coding agents
+
+skewsplit plans balanced JDBC partition predicates for Spark from a column's
+distribution. The rules for humans are in [CONTRIBUTING.md](CONTRIBUTING.md);
+everything there applies to agents too. This file is the short version.
+
+## Layout
+
+| Path | Contents |
+|------|----------|
+| `python/` | The `skewsplit` package (src layout) and its tests |
+| `python/src/skewsplit/core/` | The pure planner: standard library only, no I/O |
+| `spec/` | Behaviour spec and golden fixtures shared by every implementation |
+| `rust/`, `bench/` | Later: the Rust crate and the CI benchmark |
+| `scripts/` | Repository tooling used by make targets and CI (standard library only) |
+| `docs/adr/` | Architecture decision records |
+
+## Commands
+
+```sh
+make check       # everything a pull request runs that needs no database
+make check-all   # plus the lowest-dependency test run
+make lint        # ruff, ruff format, mypy, typos, actionlint, zizmor, filter guard
+make py-unit     # unit and property tests with coverage data
+uv run --frozen pytest python/tests/unit/test_version.py   # one file
+```
+
+Use `uv run --frozen`, so `uv.lock` never changes by accident. Change
+dependencies only on purpose, with `uv lock`.
+
+PostgreSQL and Spark tests (`make py-integration`, `make spark-e2e`) run in CI
+only. Do not start Docker or install a database to run them.
+
+## Rules that are easy to miss
+
+- Run `make check` before you finish. Fix every failure; never lower a coverage
+  threshold, skip a test or add a broad exclusion to get green.
+- The core (`skewsplit.core`) has 100% line and branch coverage and imports
+  only the standard library and itself.
+- A coverage exclusion needs a reason: `# pragma: no cover -- <reason>`.
+- Code must run on Python 3.9: use `from __future__ import annotations`, and no
+  `match` statements or other syntax newer than 3.9.
+- The package has no runtime dependencies.
+- Tests go in `python/tests/<kind>/` (`unit`, `property`, `integration`,
+  `spark`); the folder sets the marker.
+- A new folder, tool or supported version updates `.github/filters.yml`, the
+  CI matrices and the gate in the same pull request.
+- Commits use Conventional Commits, are signed, and carry no attribution
+  trailers (`Co-authored-by`, `Assisted-by`, `Generated-by`).
+- Pull requests follow the template, keep every heading and link an issue with
+  `Closes #N`.

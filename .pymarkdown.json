@@ -1,6 +1,7 @@
 {
   "plugins": {
     "md013": { "enabled": false },
-    "md024": { "siblings_only": true }
+    "md024": { "siblings_only": true },
+    "md041": { "enabled": false }
   }
 }

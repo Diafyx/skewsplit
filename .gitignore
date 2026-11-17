@@ -221,3 +221,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# skewsplit: local outputs of the make targets
+reports/
+.venv-*/
+.benchmarks/

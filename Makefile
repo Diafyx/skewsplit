@@ -27,7 +27,7 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size clean
+	py-integration spark-e2e pr-size pr-hygiene clean
 
 check: lint py-unit coverage packaging docs
 
@@ -121,6 +121,11 @@ spark-e2e:
 PR_BODY ?=
 pr-size:
 	$(SCRIPT) scripts/pr_size.py $(COMPARE) HEAD $(PR_BODY)
+
+# The pull request rules, checked against the event that started the workflow.
+# Needs GITHUB_EVENT_PATH, GITHUB_REPOSITORY and GH_TOKEN, so it runs in CI only.
+pr-hygiene:
+	$(SCRIPT) scripts/pr_hygiene.py
 
 clean:
 	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) \

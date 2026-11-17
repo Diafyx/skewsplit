@@ -1,0 +1,32 @@
+name: PR hygiene
+
+# Checks the pull request rules: title, branch name, linked open issue, labels,
+# milestone and template headings (scripts/pr_hygiene.py). Runs again whenever
+# one of those can change.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, milestoned, demilestoned]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-hygiene:
+    name: pr-hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read # reads the linked issues' state and milestone
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: make pr-hygiene
+        env:
+          GH_TOKEN: ${{ github.token }}

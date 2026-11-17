@@ -83,3 +83,9 @@ def test_main_prints_without_github_output(
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     assert main(["--event", "push"]) == 0
     assert "allowed-skips=pr-size\n" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", ["1001", '{"a": 1}', '["ok", 2]'])
+def test_main_rejects_values_that_are_not_lists_of_strings(value: str) -> None:
+    with pytest.raises(TypeError, match="--groups must be a JSON list of strings"):
+        main(["--event", "pull_request", "--groups", value])

@@ -37,7 +37,7 @@ def test_collect_counts_outcomes_and_first_message_lines(report: Path) -> None:
 
 def test_render_passing_run() -> None:
     text = render("py-unit", Totals(tests=3, seconds=0.25))
-    assert text.startswith("### ✅ py-unit\n")
+    assert text.startswith("### :white_check_mark: py-unit\n")
     assert "| 3 | 3 | 0 | 0 | 0.2 s |" in text
     assert "Failed:" not in text
 
@@ -45,7 +45,8 @@ def test_render_passing_run() -> None:
 def test_render_caps_the_list_of_failures() -> None:
     names = [f"t::test_{i}" for i in range(junit_summary.MAX_LISTED + 2)]
     text = render("py-unit", Totals(tests=len(names), failed=len(names), failures=names))
-    assert text.startswith("### ❌ py-unit\n")
+    assert text.startswith("### :x: py-unit\n")
+    assert text.isascii()
     assert "- `t::test_0`" in text
     assert f"- `t::test_{junit_summary.MAX_LISTED}`" not in text
     assert text.endswith("- and 2 more\n")
@@ -65,4 +66,9 @@ def test_main_prints_without_a_step_summary(
 ) -> None:
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert junit_summary.main(["docs"]) == 0
-    assert capsys.readouterr().out.startswith("### ✅ docs\n")
+    assert capsys.readouterr().out.startswith("### :white_check_mark: docs\n")
+
+
+def test_output_prints_on_a_cp1252_console(report: Path) -> None:
+    text = render("py-unit", collect([report]))
+    assert text.encode("cp1252").decode("cp1252") == text

@@ -57,6 +57,15 @@ def render(selected: dict[str, bool]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _string_list(option: str, text: str) -> set[str]:
+    """Parse a JSON list of strings, or fail with a message naming the option."""
+    value = json.loads(text)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        msg = f"{option} must be a JSON list of strings, got {text!r}"
+        raise TypeError(msg)
+    return set(value)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse the arguments and write the outputs."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -65,9 +74,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--labels", default="[]", help="JSON list of pull request labels")
     parser.add_argument("--full", action="store_true", help="run every job")
     args = parser.parse_args(argv)
-    selected = select(
-        args.event, set(json.loads(args.groups)), set(json.loads(args.labels)), full=args.full
-    )
+    groups = _string_list("--groups", args.groups)
+    labels = _string_list("--labels", args.labels)
+    selected = select(args.event, groups, labels, full=args.full)
     text = render(selected)
     output = os.environ.get("GITHUB_OUTPUT")
     if output:

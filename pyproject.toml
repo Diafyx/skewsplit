@@ -28,9 +28,11 @@ test = [
 # Lint, type and packaging tools. They run on the newest Python only.
 lint = [
   "actionlint-py>=1.7.12; python_version>='3.11'",
+  "check-wheel-contents>=0.6.3; python_version>='3.11'",
   "diff-cover>=11.0; python_version>='3.11'",
   "mypy>=2.4; python_version>='3.11'",
   "pre-commit-hooks>=6.0; python_version>='3.11'",
+  "pymarkdownlnt>=0.9.42; python_version>='3.11'",
   "ruff>=0.17.5; python_version>='3.11'",
   "twine>=7.0; python_version>='3.11'",
   "typos>=1.52; python_version>='3.11'",
@@ -59,7 +61,13 @@ ignore = [
   "PLR2004", # literal values are the point of a test
   "S101",    # pytest uses assert
 ]
+"python/tests/unit/scripts/**" = [
+  "S603", # tests run git with fixed arguments in a temporary repository
+  "S607", # git is found on PATH, as in every CI job
+]
 "scripts/**" = [
+  "S603", # subprocess runs git with fixed arguments, never a shell string
+  "S607", # git is found on PATH, as in every CI job
   "T201", # scripts report with print
 ]
 
@@ -77,11 +85,13 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 files = ["python/src", "python/tests", "scripts"]
-mypy_path = "python/src"
+mypy_path = ["python/src", "scripts"]
 
 [tool.pytest.ini_options]
 minversion = "8.4"
 testpaths = ["python/tests"]
+# The repository scripts are tested as top-level modules.
+pythonpath = ["scripts"]
 # A plain `pytest` runs the fast kinds only. The make targets for PostgreSQL
 # and Spark pass their own -m, which replaces this one.
 addopts = [

@@ -1,0 +1,45 @@
+# Path filter groups for the `changes` job in ci.yml (dorny/paths-filter).
+#
+# Every tracked file must match at least one group; `make check-filters`
+# fails otherwise. scripts/ci_select.py maps groups to jobs. The groups
+# `spec`, `ci` and `build` are shared inputs and select every job.
+#
+# Patterns use picomatch syntax with dot files matched. Keep them to `*`,
+# `**` and `?` so scripts/check_filters.py reads them the same way.
+
+spec:
+  - 'spec/**'
+ci:
+  - '.github/**'
+  - 'scripts/**'
+build:
+  - 'Makefile'
+  - 'pyproject.toml'
+  - 'uv.lock'
+  - 'Cargo.toml'
+  - 'Cargo.lock'
+  - 'rust-toolchain.toml'
+  - '.gitattributes'
+py-core:
+  - 'python/src/skewsplit/core/**'
+cli:
+  - 'python/src/skewsplit/cli.py'
+  - 'python/src/skewsplit/__main__.py'
+py-adapters:
+  # Everything else in the Python package, including its tests and metadata.
+  - 'python/**'
+rust:
+  - 'rust/**'
+bench:
+  - 'bench/**'
+docs:
+  - '**/*.md'
+  - 'docs/**'
+  - '.pymarkdown.json'
+repo:
+  # Repository housekeeping. Changes here run only `lint` and the gate.
+  - 'LICENSE'
+  - '.gitignore'
+  - '.editorconfig'
+  - '.pre-commit-config.yaml'
+  - '_typos.toml'

@@ -1,0 +1,302 @@
+name: Release
+
+# release-please keeps a release pull request open for each component (see
+# release-please-config.json). Merging it creates a draft GitHub Release and
+# its tag, and this same run then tests, builds, attests and publishes.
+#
+# Run it by hand with "dry-run" to rehearse the Python release: it builds a dev
+# version and publishes it to TestPyPI only.
+#
+# release-please runs with a GitHub App token, because pull requests and tags
+# created with GITHUB_TOKEN start no workflows: the release pull request would
+# get no CI. Until the App is set up (variable RELEASE_APP_CLIENT_ID), the job
+# is skipped. PyPI and TestPyPI trust this file name for Trusted Publishing.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Publish a dev version to TestPyPI only (off runs release-please, as a push does)
+        type: boolean
+        default: true
+
+permissions: {}
+
+# One release run at a time, so a push cannot update the release pull request
+# while a release is still publishing. A newer run waits; if several wait, only
+# the newest is kept, which is enough because release-please reads the whole
+# history each time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    if: >-
+      ${{ vars.RELEASE_APP_CLIENT_ID != ''
+      && !(github.event_name == 'workflow_dispatch' && inputs.dry-run) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {} # everything goes through the App token
+    outputs:
+      python-release: ${{ steps.release.outputs['python--release_created'] }}
+      python-tag: ${{ steps.release.outputs['python--tag_name'] }}
+      python-version: ${{ steps.release.outputs['python--version'] }}
+    steps:
+      - id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write # release commits, tags and releases
+          permission-pull-requests: write # opens and updates the release pull request
+          permission-issues: write # labels the release pull request
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # The full CI suite, whatever changed.
+  test:
+    name: test
+    needs: release-please
+    if: >-
+      ${{ !cancelled() && (needs.release-please.outputs.python-release == 'true'
+      || (github.event_name == 'workflow_dispatch' && inputs.dry-run)) }}
+    # ci.yml's pr-size job asks for pull-requests: write. It runs on pull
+    # requests only, so here it is skipped, but a called workflow may not ask
+    # for more than its caller grants.
+    permissions:
+      contents: read
+      pull-requests: write # only for ci.yml's pr-size job, skipped here
+    # zizmor prefers the $/ form, which actionlint 1.7.12 cannot parse yet. A
+    # job-level call is resolved from the running commit, not from a checkout,
+    # so ./ loads nothing a step could have written.
+    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository]
+    with:
+      full: true
+
+  build:
+    name: build
+    needs: [release-please, test]
+    if: ${{ !cancelled() && needs.test.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No cache: a release is built from a clean download of uv.lock.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - id: version
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          RELEASE_VERSION: ${{ needs.release-please.outputs.python-version }}
+        run: |
+          current=$(uv version --package skewsplit --short --frozen)
+          if [[ "$DRY_RUN" == true ]]; then
+            # Unique per run and attempt: GitHub allows at most 50 attempts.
+            version="$current.dev$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))"
+            uv version --package skewsplit --no-sync "$version"
+          elif [[ "$current" == "$RELEASE_VERSION" ]]; then
+            version="$current"
+          else
+            echo "::error::python/pyproject.toml has $current, release-please released $RELEASE_VERSION"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # The same build and checks as the packaging job in ci.yml: twine check,
+      # check-wheel-contents, scripts/check_dist.py and an install smoke test.
+      - run: make packaging
+      - name: Write the SBOM
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p sbom
+          uv export --package skewsplit --no-dev --frozen --format cyclonedx1.5 \
+            --preview-features sbom-export --quiet --output-file "sbom/skewsplit-$VERSION.cdx.json"
+          jq -e --arg v "$VERSION" '.metadata.component.version == $v' "sbom/skewsplit-$VERSION.cdx.json"
+      # Named release-* because the called ci.yml already uploads python-dist,
+      # and artifact names are unique within a run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-sbom
+          path: sbom/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Build provenance and SBOM attestations for the distributions, signed with
+  # Sigstore and stored in the repository (`gh attestation verify`).
+  attest:
+    name: attest
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # signs the attestations
+      attestations: write # stores them in the repository
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-sbom
+          path: sbom
+      - id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+          create-storage-record: false
+      - id: sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+          sbom-path: sbom/skewsplit-${{ needs.build.outputs.version }}.cdx.json
+          create-storage-record: false
+      - env:
+          PROVENANCE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          mkdir -p attestations
+          cp "$PROVENANCE" "attestations/skewsplit-$VERSION.provenance.sigstore.json"
+          cp "$SBOM" "attestations/skewsplit-$VERSION.sbom.sigstore.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-attestations
+          path: attestations/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-testpypi:
+    name: publish-testpypi
+    needs: [build, attest]
+    if: ${{ !cancelled() && needs.attest.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/skewsplit/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  # Installs the published package from TestPyPI only, as a user would.
+  smoke-testpypi:
+    name: smoke-testpypi (${{ matrix.os }}, ${{ matrix.python }})
+    needs: [build, publish-testpypi]
+    if: ${{ !cancelled() && needs.publish-testpypi.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.9", "3.15"]
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      PYTHON: ${{ matrix.python }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      # TestPyPI's index can take a few minutes to list a new upload.
+      - name: Install from TestPyPI
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if uv venv --quiet --python "$PYTHON" --clear smoke &&
+              uv pip install --python smoke --no-cache --default-index https://test.pypi.org/simple/ \
+                "skewsplit==$VERSION"; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 30 seconds."
+            sleep 30
+          done
+          exit 1
+      - name: Import it and run the CLI
+        run: |
+          bin=smoke/bin
+          if [[ "$RUNNER_OS" == Windows ]]; then bin=smoke/Scripts; fi
+          "$bin/python" -c 'import skewsplit; print(skewsplit.__version__)'
+          # Python on Windows ends lines with \r\n, and bash keeps the \r.
+          actual=$("$bin/skewsplit" --version | tr -d '\r')
+          echo "$actual"
+          test "$actual" == "skewsplit $VERSION"
+
+  publish-pypi:
+    name: publish-pypi
+    needs: [release-please, build, smoke-testpypi]
+    if: >-
+      ${{ !cancelled() && needs.smoke-testpypi.result == 'success'
+      && needs.release-please.outputs.python-release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The environment requires the maintainer's approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/skewsplit/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  # Attaches the files to the draft release, then publishes it. The release
+  # stays a draft until here because immutable releases accept no new files
+  # once published.
+  github-release:
+    name: github-release
+    needs: [release-please, publish-pypi]
+    if: ${{ !cancelled() && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # uploads release assets and publishes the release
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.python-tag }}
+        run: |
+          gh release upload "$TAG" assets/* --repo "$REPO"
+          gh release edit "$TAG" --draft=false --repo "$REPO"

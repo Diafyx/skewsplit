@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "380ce531d9b5d4604f027e53fedab28014cce17b",
+  "separate-pull-requests": true,
+  "include-component-in-tag": true,
+  "bump-minor-pre-major": true,
+  "draft": true,
+  "force-tag-creation": true,
+  "pull-request-title-pattern": "chore(release): release${component} ${version}",
+  "extra-label": "type/chore,area/release",
+  "packages": {
+    "python": {
+      "release-type": "python",
+      "package-name": "skewsplit",
+      "component": "python",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='skewsplit')].version"
+        }
+      ]
+    }
+  }
+}

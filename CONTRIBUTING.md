@@ -180,6 +180,16 @@ creates labels by hand.
   crate have separate versions, changelogs and tags (`python-vX.Y.Z`,
   `rust-vX.Y.Z`). Each push to `main` updates a release pull request; merging
   it tags the release and publishes it after a maintainer approves.
+- Merging the Python release pull request runs `release.yml`: the full CI
+  suite, a build with the packaging checks, an SBOM and build provenance
+  attestations, TestPyPI, an install test from TestPyPI on Linux, macOS and
+  Windows, then PyPI after approval. The distributions, the SBOM and the
+  attestations are attached to the GitHub Release, which stays a draft until
+  then.
+- To rehearse a release, run the Release workflow from the Actions tab with
+  "dry-run" on. It publishes a dev version to TestPyPI only.
+- The changelogs are generated from pull request titles. Do not edit them by
+  hand; they are left out of the Markdown and spelling checks.
 
 ## Supported versions
 

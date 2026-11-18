@@ -19,7 +19,10 @@ SCRIPT := uv run --no-project --python $(PYTHON) python
 REPORTS := reports
 CORE := python/src/skewsplit/core
 LOWEST_VENV := .venv-lowest
-MD_FILES = $(shell git ls-files '*.md')
+# Generated Markdown, such as the changelogs release-please writes, is not
+# linted: see .gitattributes.
+MD_PATHSPEC := ':(attr:!linguist-generated)*.md'
+MD_FILES = $(shell git ls-files $(MD_PATHSPEC))
 # The branch that diff coverage, changed-file link checks and pr-size compare
 # against. CI sets it to the pull request's base.
 COMPARE ?= origin/main
@@ -92,7 +95,7 @@ docs:
 	$(UV_RUN) pytest -m '' -p no:randomly --doctest-glob='*.md' \
 		--junitxml=$(REPORTS)/junit-docs.xml $(MD_FILES) || [[ $$? -eq 5 ]]
 	$(SCRIPT) scripts/check_links.py $(MD_FILES)
-	changed=$$(git diff --name-only --diff-filter=d $(COMPARE)... -- '*.md'); \
+	changed=$$(git diff --name-only --diff-filter=d $(COMPARE)... -- $(MD_PATHSPEC)); \
 	if [[ -n "$$changed" ]]; then $(SCRIPT) scripts/check_links.py --external $$changed; fi
 
 # The oldest allowed versions of every direct dependency, in a separate

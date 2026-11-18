@@ -27,6 +27,7 @@ class Update:
     prefixes: tuple[str, ...]
     groups: tuple[str, ...]
     labels: frozenset[str]
+    ignored: frozenset[str]
 
 
 def parse_updates(text: str) -> list[Update]:
@@ -46,9 +47,23 @@ def parse_updates(text: str) -> list[Update]:
                 prefixes=tuple(prefixes),
                 groups=tuple(groups),
                 labels=frozenset(re.findall(r'"([^"]+)"', labels.group(1))),
+                ignored=frozenset(
+                    re.findall(r'^      - dependency-name: "([^"]+)"$', block, re.MULTILINE)
+                ),
             )
         )
     return updates
+
+
+def split_requirements(pyproject: str) -> set[str]:
+    """Return the dependency-group packages listed with more than one range."""
+    after = re.split(r"^\[dependency-groups\]$", pyproject, maxsplit=1, flags=re.MULTILINE)[1]
+    groups = re.split(r"^\[", after, maxsplit=1, flags=re.MULTILINE)[0]
+    names = [
+        re.sub(r"[-_.]+", "-", name.lower())
+        for name in re.findall(r'^  "([A-Za-z0-9][A-Za-z0-9_.-]*)', groups, re.MULTILINE)
+    ]
+    return {name for name in names if names.count(name) > 1}
 
 
 UPDATES = parse_updates(TEXT)
@@ -61,6 +76,29 @@ def test_both_ecosystems_are_configured() -> None:
 def test_an_unreadable_entry_is_an_error() -> None:
     with pytest.raises(ValueError, match="cannot read the uv entry"):
         parse_updates('updates:\n  - package-ecosystem: "uv"\n    directory: "/"\n')
+
+
+def test_uv_ignores_exactly_the_split_packages() -> None:
+    # Dependabot cannot update a package locked at several versions, and an
+    # ignore left behind after a split is removed would hide updates.
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    uv = next(update for update in UPDATES if update.ecosystem == "uv")
+    assert uv.ignored == split_requirements(pyproject)
+
+
+def test_split_requirements_finds_repeated_names_only() -> None:
+    pyproject = (
+        "[dependency-groups]\n"
+        "test = [\n"
+        "  \"Foo_Bar[x]>=2; python_version>='3.10'\",\n"
+        "  \"foo-bar>=1,<2; python_version<'3.10'\",\n"
+        '  "single>=1",\n'
+        "]\n"
+        'dev = [{ include-group = "test" }]\n'
+        "\n[tool.other]\n"
+        'x = [\n  "single>=2",\n]\n'
+    )
+    assert split_requirements(pyproject) == {"foo-bar"}
 
 
 @pytest.mark.parametrize("update", UPDATES, ids=lambda update: update.ecosystem)

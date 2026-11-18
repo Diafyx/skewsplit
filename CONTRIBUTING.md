@@ -128,6 +128,9 @@ with a message unless you point them at a server you run yourself.
   share one.
 - Merges are squash merges, done by a maintainer when every required check is
   green and every conversation is resolved.
+- Dependabot opens weekly pull requests for GitHub Actions (`ci(deps)`) and
+  for `uv.lock` (`build(deps)`), with minor and patch updates grouped. It
+  never changes the version ranges in `pyproject.toml`; change those by hand.
 
 The `pr-hygiene` check enforces the title, branch, issue link, labels,
 milestone and template headings, and lists anything to fix in its summary.

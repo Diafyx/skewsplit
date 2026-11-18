@@ -1,0 +1,52 @@
+name: Task
+description: A planned piece of roadmap work
+labels: ["status/triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What this task delivers, in two or three sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      value: |
+        In scope:
+        -
+        Out of scope:
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size estimate
+      options:
+        - S (up to 100 lines)
+        - M (101 to 300)
+        - L (301 to 700)
+        - XL (701 to 1500)
+        - XXL (more than 1500)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes and links
+  - type: markdown
+    attributes:
+      value: |
+        **Definition of Done**: acceptance criteria met; tests added and coverage
+        gates passing; docs updated where behaviour changed; CI updated if a
+        component, folder, tool or supported version was added.

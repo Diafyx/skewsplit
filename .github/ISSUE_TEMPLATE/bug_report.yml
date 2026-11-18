@@ -1,0 +1,80 @@
+name: Bug report
+description: Something does not work as documented
+title: "[Bug] "
+labels: ["type/bug", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please search existing issues first.
+        Security problems must NOT be reported here: use "Report a vulnerability"
+        on the Security tab.
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Search before asking
+      options:
+        - label: I searched the existing issues and found nothing similar.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest command, code or steps that show the problem. Include the column type and rough data shape if they matter.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.1.0 (from `skewsplit --version`)"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Python package
+        - Rust crate
+        - CLI
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - Python:
+        - Spark:
+        - Database and version:
+        - OS:
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or error
+      description: Full error text or log output. It is rendered as code.
+      render: text
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Are you willing to submit a PR?
+      options:
+        - label: Yes, I am willing to submit a PR.
+  - type: checkboxes
+    id: coc
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

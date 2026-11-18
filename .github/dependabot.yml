@@ -35,6 +35,19 @@ updates:
     # py-lowest job tests, and the Python 3.9 and 3.10 ranges are capped on
     # purpose, so both are changed by hand.
     versioning-strategy: "lockfile-only"
+    # These test tools have a separate range for each Python version, so
+    # uv.lock holds several versions of each. Dependabot reads only the oldest
+    # and pins every Python version to the newest release, which the capped
+    # ranges reject, so its updates for them always fail. Update them by hand
+    # with `uv lock --upgrade-package <name>`. A name-only ignore still allows
+    # security updates. A test keeps this list equal to the split packages in
+    # pyproject.toml.
+    ignore:
+      - dependency-name: "coverage"
+      - dependency-name: "hypothesis"
+      - dependency-name: "pytest"
+      - dependency-name: "pytest-benchmark"
+      - dependency-name: "pytest-randomly"
     groups:
       uv:
         update-types: ["minor", "patch"]

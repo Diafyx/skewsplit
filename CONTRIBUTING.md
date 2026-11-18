@@ -131,6 +131,9 @@ with a message unless you point them at a server you run yourself.
 - Dependabot opens weekly pull requests for GitHub Actions (`ci(deps)`) and
   for `uv.lock` (`build(deps)`), with minor and patch updates grouped. It
   never changes the version ranges in `pyproject.toml`; change those by hand.
+  It also skips the test tools that have a separate range for each Python
+  version, because it cannot update them. Update those with
+  `uv lock --upgrade-package <name>`.
 
 The `pr-hygiene` check enforces the title, branch, issue link, labels,
 milestone and template headings, and lists anything to fix in its summary.

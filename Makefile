@@ -36,7 +36,8 @@ check: lint py-unit coverage packaging docs
 
 check-all: check py-lowest
 
-# ruff, mypy, spelling, workflow audits, and the issue forms against GitHub's schemas.
+# ruff, mypy, spelling, workflow audits, and the issue forms and Dependabot config
+# against their schemas.
 lint: check-filters
 	$(UV_RUN) ruff check
 	$(UV_RUN) ruff format --check
@@ -49,6 +50,7 @@ lint: check-filters
 		.github/ISSUE_TEMPLATE/task.yml
 	$(UV_RUN) check-jsonschema --builtin-schema vendor.github-issue-config \
 		.github/ISSUE_TEMPLATE/config.yml
+	$(UV_RUN) check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
 
 # Every tracked file must match a group in .github/filters.yml.
 check-filters:

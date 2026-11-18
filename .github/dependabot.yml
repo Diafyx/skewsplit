@@ -1,0 +1,47 @@
+# Weekly dependency updates. Minor and patch updates are grouped per
+# ecosystem; each major update gets its own pull request.
+#
+# New versions wait 7 days before Dependabot proposes them, so a bad release
+# is usually yanked before it reaches us. Security updates do not wait.
+#
+# The commit prefixes and labels make Dependabot's pull requests pass
+# pr-hygiene: `ci(deps)` with `type/ci`, `build(deps)` with `type/build`, and
+# an `area/*` label on each. Dependabot adds the colon after the prefix.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "type/ci"
+      - "area/ci"
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    # Only uv.lock changes. The lower bounds in pyproject.toml are what the
+    # py-lowest job tests, and the Python 3.9 and 3.10 ranges are capped on
+    # purpose, so both are changed by hand.
+    versioning-strategy: "lockfile-only"
+    groups:
+      uv:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps)"
+    labels:
+      - "dependencies"
+      - "type/build"
+      - "area/python"

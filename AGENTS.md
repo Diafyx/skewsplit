@@ -22,6 +22,7 @@ make check       # everything a pull request runs that needs no database
 make check-all   # plus the lowest-dependency test run
 make lint        # ruff, ruff format, mypy, typos, actionlint, zizmor, filter guard, fixtures
 make py-unit     # unit and property tests with coverage data
+make conformance # golden fixtures and spec invariants, more Hypothesis examples
 uv run --frozen pytest python/tests/unit/test_version.py   # one file
 ```
 

@@ -31,7 +31,8 @@ some test inputs of the wrong shape.
 counts add up and match the input, the predicates fit together in order,
 each warning is given exactly when the spec says, and the skew score follows
 from the largest predicate. It does not plan, so a wrong split point is caught
-by review of the description and by the implementations' tests.
+by review of the description and by the implementations' tests: for Python,
+`make conformance` runs every fixture against the core.
 
 A change to `SPEC.md` that changes any output changes the fixtures in the same
 pull request.

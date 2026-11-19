@@ -19,7 +19,7 @@ test = [
   "hypothesis>=6.141,<6.142; python_version<'3.10'",
   "pytest>=9.2; python_version>='3.10'",
   "pytest>=8.4.2,<9; python_version<'3.10'",
-  "pytest-benchmark>=5.3; python_version>='3.10'",
+  "pytest-benchmark>=5.3.1; python_version>='3.10'",
   "pytest-benchmark>=5.2.3,<5.3; python_version<'3.10'",
   "pytest-randomly>=5.1; python_version>='3.11'",
   "pytest-randomly>=5.0,<5.1; python_version=='3.10'",
@@ -102,12 +102,15 @@ addopts = [
   "--strict-markers",
   "--strict-config",
   "--import-mode=importlib",
+  # Benchmarks run once, untimed; make bench-core times them.
+  "--benchmark-disable",
   "-m",
   "unit or property",
 ]
 markers = [
   "unit: fast tests with no external services",
   "property: Hypothesis property tests",
+  "conformance: golden fixtures and spec invariants (also run by make conformance)",
   "integration: needs PostgreSQL (CI only)",
   "spark: needs Spark and Java (CI only)",
   "slow: takes more than a few seconds",

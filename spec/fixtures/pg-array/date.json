@@ -1,0 +1,14 @@
+{
+  "description": "Dates have no special characters, so they are unquoted.",
+  "input": {
+    "text": "{2026-01-01,2026-12-31}",
+    "type": "date"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "2026-01-01",
+      "2026-12-31"
+    ]
+  }
+}

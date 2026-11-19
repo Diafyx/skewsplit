@@ -1,0 +1,13 @@
+{
+  "description": "A quoted element must be followed by a comma or the closing brace.",
+  "input": {
+    "text": "{\"1\"2}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

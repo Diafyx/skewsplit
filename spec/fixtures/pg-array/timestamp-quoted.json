@@ -1,0 +1,14 @@
+{
+  "description": "PostgreSQL quotes timestamps because of the space. The fraction is written in output form: .50 becomes .5.",
+  "input": {
+    "text": "{\"2026-11-18 00:00:00\",\"2026-11-19 12:30:00.50\"}",
+    "type": "timestamp"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "2026-11-18 00:00:00",
+      "2026-11-19 12:30:00.5"
+    ]
+  }
+}

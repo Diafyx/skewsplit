@@ -1,0 +1,13 @@
+{
+  "description": "An unquoted NULL is a NULL element, which pg_stats never stores.",
+  "input": {
+    "text": "{1,NULL}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "A two-dimensional array is not supported.",
+  "input": {
+    "text": "{{1,2},{3,4}}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

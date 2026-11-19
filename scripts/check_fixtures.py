@@ -6,6 +6,9 @@ Usage: python scripts/check_fixtures.py [FIXTURES_DIR]
 schema. It checks each plan against its input and the rules of spec/SPEC.md
 that need no planner: row counts, the order of predicates, warnings and the
 skew score. Running the fixtures through a planner is each implementation's job.
+
+The array text fixtures in pg-array/ (spec section 12) have no plan; only
+their names and spec versions are checked here.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_DIR = Path("spec/fixtures")
+# Fixtures of the other functions of the spec, in subdirectories.
+SUBDIRS = ("pg-array",)
 SPEC = Path("spec/SPEC.md")
 _VERSION = re.compile(r"^Spec version: \*\*(\d+\.\d+)\*\*$", re.MULTILINE)
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\.json")
@@ -169,15 +174,18 @@ def check_plan(inp: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     return problems
 
 
-def check_fixture(path: Path, version: str) -> list[str]:
-    """Return the problems with one fixture file, each prefixed with its name."""
+def check_fixture(path: Path, version: str, *, planner: bool = True) -> list[str]:
+    """Return the problems with one fixture file, each prefixed with its name.
+
+    ``planner`` is false for the fixtures in SUBDIRS, which have no plan to check.
+    """
     fixture = json.loads(path.read_text(encoding="utf-8"), parse_float=Decimal)
     expected = fixture["expected"]
     is_error = "error" in expected
     problems = check_name(path.name, is_error=is_error)
     if expected["spec_version"] != version:
         problems.append(f"spec_version must be {version}, the version in {SPEC.as_posix()}")
-    if not is_error:
+    if planner and not is_error:
         problems += check_plan(fixture["input"], expected)
     return [f"{path}: {problem}" for problem in problems]
 
@@ -187,18 +195,21 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     directory = Path(args[0]) if args else DEFAULT_DIR
     version = spec_version(SPEC.read_text(encoding="utf-8"))
-    paths = sorted(directory.iterdir())
+    files = [(path, True) for path in sorted(directory.iterdir()) if path.name not in SUBDIRS]
+    for name in SUBDIRS:
+        if (directory / name).is_dir():
+            files += [(path, False) for path in sorted((directory / name).iterdir())]
     problems = []
-    for path in paths:
+    for path, planner in files:
         if path.suffix == ".json":
-            problems += check_fixture(path, version)
+            problems += check_fixture(path, version, planner=planner)
         else:
-            problems.append(f"{path}: only .json fixtures belong in {directory}")
+            problems.append(f"{path}: only .json fixtures belong in {path.parent}")
     for problem in problems:
         print(problem, file=sys.stderr)
     if problems:
         return 1
-    print(f"{len(paths)} fixtures are consistent with spec version {version}")
+    print(f"{len(files)} fixtures are consistent with spec version {version}")
     return 0
 
 

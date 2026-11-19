@@ -26,6 +26,7 @@ Contents:
 9. [Errors](#9-errors)
 10. [Output](#10-output)
 11. [Versioning](#11-versioning)
+12. [PostgreSQL array text](#12-postgresql-array-text)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point.
@@ -409,6 +410,7 @@ fixture has exactly one.
 | `value_out_of_range` | A value's ordinal is outside the type's range |
 | `duplicate_value` | Two `mcv` entries have the same value |
 | `invalid_histogram` | Fewer than 2 bounds, bounds out of order, or a bound equal to a value in `mcv` |
+| `invalid_array` | Only when reading array text (section 12): the text is not in its format, or has a NULL element |
 
 **Example.** `"partitions": 0` gives `invalid_partitions`, and the value
 `"2026-02-30"` for a `date` column gives `invalid_value`.
@@ -473,3 +475,56 @@ so it is a major change: 1.1 to 2.0.
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Until the first
 release that implements version 1.0, version 1.0 itself may still change.
+
+## 12. PostgreSQL array text
+
+Adapters read `most_common_vals` and `histogram_bounds` from PostgreSQL's
+`pg_stats` as text, in PostgreSQL's output format for arrays. This section
+turns such text into the values of section 1, so that every implementation
+reads it the same way. The planner itself never sees array text.
+
+Reading takes the text and a type (with `scale` for `numeric`). It returns the
+values in order, each in the output form of section 2, or an error.
+
+**Format.** The text is exactly the following, with nothing before, between
+or after the parts, not even whitespace:
+
+1. Optionally, a prefix `[L:U]=`. `L` and `U` are integers in the form
+   `-?(0|[1-9][0-9]*)`, between -2147483648 and 2147483647, with `L <= U`, and
+   the array has exactly `U - L + 1` elements. PostgreSQL prints the prefix
+   when the lower bound is not 1.
+2. `{`, then zero or more elements separated by `,`, then `}`. `{}` is the
+   empty array and gives no values.
+
+An element is quoted or unquoted:
+
+- **Quoted**: `"`, any characters, `"`. Inside, a `\` stands for the character
+  after it, so `\"` is `"` and `\\` is `\`. Every other character stands for
+  itself, and the first `"` not taken by a `\` ends the element.
+- **Unquoted**: one or more characters, none of them `{`, `}`, `,`, `"`, `\`,
+  space, tab, line feed, carriage return, vertical tab or form feed. An
+  unquoted `NULL`, in any mix of ASCII upper and lower case, is a NULL element.
+
+PostgreSQL quotes an element that is empty, equals `NULL` in any case, or
+contains one of the characters above. It may quote others, and quoting changes
+nothing: `{"7"}` and `{7}` both give `7`.
+
+**Errors.** The error is `invalid_array` when the text is not in this format,
+when it has a NULL element (`pg_stats` never stores NULL in these arrays), or
+when it is a multidimensional array such as `{{1,2},{3,4}}`. Otherwise each
+element must be a value of the type: the error is `invalid_value` or
+`value_out_of_range` as in section 2.
+
+**Examples.**
+
+| Text | Type | Result |
+|------|------|--------|
+| `{1,2,3}` | `int4` | `1`, `2`, `3` |
+| `[0:1]={5,7}` | `int4` | `5`, `7` |
+| `{"2026-11-18 00:00:00","2026-11-19 12:30:00.50"}` | `timestamp` | `2026-11-18 00:00:00`, `2026-11-19 12:30:00.5` |
+| `{1.5,2.25}` | `numeric`, scale 2 | `1.50`, `2.25` |
+| `{1,NULL}` | `int4` | `invalid_array` |
+| `{"NULL"}` | `int4` | `invalid_value`: a quoted `NULL` is the text `NULL`, not a NULL element |
+| `{1, 2}` | `int4` | `invalid_array`: PostgreSQL never prints the space |
+
+The cases in `spec/fixtures/pg-array/` check this section.

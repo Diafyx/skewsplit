@@ -1,0 +1,13 @@
+{
+  "description": "A quoted empty element is the empty text, which is not an int4.",
+  "input": {
+    "text": "{\"\"}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_value"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Values come back in output form: with scale 2, 1.5 is 1.50.",
+  "input": {
+    "text": "{1.5,2.25,-3}",
+    "type": "numeric",
+    "scale": 2
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "1.50",
+      "2.25",
+      "-3.00"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Inside quotes, a backslash stands for the next character, so \\1\\2 is 12.",
+  "input": {
+    "text": "{\"\\1\\2\"}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "12"
+    ]
+  }
+}

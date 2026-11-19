@@ -61,6 +61,9 @@ check-filters:
 check-fixtures:
 	$(UV_RUN) check-jsonschema --check-metaschema spec/schema/fixture.schema.json
 	$(UV_RUN) check-jsonschema --schemafile spec/schema/fixture.schema.json spec/fixtures/*.json
+	$(UV_RUN) check-jsonschema --check-metaschema spec/schema/pg-array.schema.json
+	$(UV_RUN) check-jsonschema --schemafile spec/schema/pg-array.schema.json \
+		spec/fixtures/pg-array/*.json
 	$(SCRIPT) scripts/check_fixtures.py
 
 # Unit and property tests with coverage data. Run from a clean data file so a

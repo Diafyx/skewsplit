@@ -1,0 +1,11 @@
+{
+  "description": "{} is the empty array and gives no values.",
+  "input": {
+    "text": "{}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": []
+  }
+}

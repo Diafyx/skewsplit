@@ -1,0 +1,14 @@
+{
+  "description": "[1:2]= is the default PostgreSQL leaves out, and is still allowed.",
+  "input": {
+    "text": "[1:2]={5,6}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "5",
+      "6"
+    ]
+  }
+}

@@ -193,6 +193,35 @@ def test_main_reports_problems_and_exits_1(
     assert "planned_partitions must be 4" in err
 
 
+def test_main_checks_the_array_text_fixtures_without_a_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pg_array = tmp_path / "pg-array"
+    pg_array.mkdir()
+    (tmp_path / "other").mkdir()
+    (pg_array / "notes.txt").write_text("x\n", encoding="utf-8")
+    fixture = {
+        "description": "d",
+        "input": {"text": "{}", "type": "int4"},
+        "expected": {"spec_version": "1.0", "error": {"code": "invalid_array"}},
+    }
+    (pg_array / "bad.json").write_text(json.dumps(fixture), encoding="utf-8")
+    fixture["expected"] = {"spec_version": "0.9", "values": []}
+    (pg_array / "empty.json").write_text(json.dumps(fixture), encoding="utf-8")
+    monkeypatch.chdir(REPO)
+    assert main([str(tmp_path)]) == 1
+    err = capsys.readouterr().err.splitlines()
+    assert err == [
+        f"{tmp_path / 'other'}: only .json fixtures belong in {tmp_path}",
+        (
+            f"{pg_array / 'bad.json'}: error fixtures, and only they, have names starting"
+            " with 'error-'"
+        ),
+        f"{pg_array / 'empty.json'}: spec_version must be 1.0, the version in spec/SPEC.md",
+        f"{pg_array / 'notes.txt'}: only .json fixtures belong in {pg_array}",
+    ]
+
+
 def test_main_passes_on_the_repository(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1,0 +1,13 @@
+{
+  "description": "NULL is matched in any ASCII case, so null is a NULL element too.",
+  "input": {
+    "text": "{null}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

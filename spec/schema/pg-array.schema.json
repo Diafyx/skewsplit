@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Diafyx/skewsplit/blob/main/spec/schema/pg-array.schema.json",
+  "title": "skewsplit PostgreSQL array text fixture",
+  "description": "One array text and type, and the values or error every implementation must produce for it, as defined in spec/SPEC.md section 12. Error messages are left out: their wording is not part of the contract.",
+  "type": "object",
+  "required": ["description", "input", "expected"],
+  "properties": {
+    "description": {
+      "description": "Why the expected result follows from the spec.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "type": "object",
+      "required": ["text", "type"],
+      "properties": {
+        "text": {"type": "string"},
+        "type": {"enum": ["int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz"]},
+        "scale": {"type": "integer", "minimum": 0, "maximum": 1000}
+      },
+      "additionalProperties": false,
+      "if": {"properties": {"type": {"const": "numeric"}}},
+      "then": {"required": ["scale"]},
+      "else": {"not": {"required": ["scale"]}}
+    },
+    "expected": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["spec_version", "values"],
+          "properties": {
+            "spec_version": {"const": "1.0"},
+            "values": {"type": "array", "items": {"type": "string"}}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["spec_version", "error"],
+          "properties": {
+            "spec_version": {"const": "1.0"},
+            "error": {
+              "type": "object",
+              "required": ["code"],
+              "properties": {
+                "code": {"enum": ["invalid_array", "invalid_value", "value_out_of_range"]}
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

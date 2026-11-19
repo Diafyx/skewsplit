@@ -1,0 +1,95 @@
+{
+  "description": "1000 int4 rows over histogram bounds 1, 250, 500, 750, 1000: four buckets of 250 rows, no NULLs and no common values, N = 4. The targets 250, 500 and 750 are met exactly at the bucket bounds (G(250) = 250, while G(249) = 250 * 248 / 249 = 248), so every range holds 250 rows. Skew score (2 * 250 * 4 * 1000 + 1000) / 2000 = 1000, so 1.0. The input's source is copied to the output.",
+  "input": {
+    "column": "id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 1000
+    },
+    "source": {
+      "strategy": "pg_stats",
+      "table": "public.orders"
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "id",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1000,
+      "null": 0,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "250"
+        },
+        "sql": "\"id\" < 250",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "250"
+        },
+        "upper": {
+          "op": "<",
+          "value": "500"
+        },
+        "sql": "\"id\" >= 250 AND \"id\" < 500",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "500"
+        },
+        "upper": {
+          "op": "<",
+          "value": "750"
+        },
+        "sql": "\"id\" >= 500 AND \"id\" < 750",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "750"
+        },
+        "upper": null,
+        "sql": "\"id\" >= 750",
+        "estimated_rows": 250
+      }
+    ],
+    "skew_score": 1.0,
+    "warnings": [],
+    "source": {
+      "strategy": "pg_stats",
+      "table": "public.orders"
+    }
+  }
+}

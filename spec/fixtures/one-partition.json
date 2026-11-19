@@ -1,0 +1,47 @@
+{
+  "description": "N = 1: one range with no split point, so the only non-NULL predicate is \"id\" IS NOT NULL. No value can be isolated ((1 - 1) / 2 = 0). One predicate is what was asked, so there is no fewer_partitions. Skew score (2 * 1000 * 1 * 1000 + 1005) / 2010 = 995, so 0.995: below 1.0 because the NULL predicate is a partition beyond N.",
+  "input": {
+    "column": "id",
+    "type": "int8",
+    "partitions": 1,
+    "null_rows": 5,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "1",
+        "500",
+        "1000"
+      ],
+      "rows": 1000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "id",
+    "type": "int8",
+    "requested_partitions": 1,
+    "planned_partitions": 1,
+    "rows": {
+      "total": 1005,
+      "null": 5,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"id\" IS NULL",
+        "estimated_rows": 5
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": null,
+        "sql": "\"id\" IS NOT NULL",
+        "estimated_rows": 1000
+      }
+    ],
+    "skew_score": 0.995,
+    "warnings": [],
+    "source": null
+  }
+}

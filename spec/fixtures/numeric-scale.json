@@ -1,0 +1,95 @@
+{
+  "description": "numeric with scale 2: ordinals are hundredths, so the bound -50.5 is -5050, and output values have exactly two digits after the point (10.00). The column name contains double quotes, doubled in SQL. 50 NULL rows; buckets hold 750 rows; value 9.99 (800 rows) is not a candidate (800 * 4 < 3800). Targets 950, 1900 and 2850. 950 is met exactly at 5.34 (750 + 750 * 534 / 1999) and 2850 at 78.67. For 1900, x_hi = 10.00 (G = 1925, with the 800 rows at 9.99) is 25 away and x_lo = 9.99 (G = 1124) is 776 away. Skew score (2 * 975 * 4 * 1000 + 3850) / 7700 = 1013.",
+  "input": {
+    "column": "amount \"EUR\"",
+    "type": "numeric",
+    "scale": 2,
+    "partitions": 4,
+    "null_rows": 50,
+    "mcv": [
+      {
+        "value": "9.99",
+        "rows": 800
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "-50.5",
+        "0",
+        "19.99",
+        "100",
+        "2500.75"
+      ],
+      "rows": 3000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "amount \"EUR\"",
+    "type": "numeric",
+    "scale": 2,
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 3850,
+      "null": 50,
+      "non_null": 3800
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"amount \"\"EUR\"\"\" IS NULL",
+        "estimated_rows": 50
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "5.34"
+        },
+        "sql": "\"amount \"\"EUR\"\"\" < 5.34",
+        "estimated_rows": 950
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "5.34"
+        },
+        "upper": {
+          "op": "<",
+          "value": "10.00"
+        },
+        "sql": "\"amount \"\"EUR\"\"\" >= 5.34 AND \"amount \"\"EUR\"\"\" < 10.00",
+        "estimated_rows": 975
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "10.00"
+        },
+        "upper": {
+          "op": "<",
+          "value": "78.67"
+        },
+        "sql": "\"amount \"\"EUR\"\"\" >= 10.00 AND \"amount \"\"EUR\"\"\" < 78.67",
+        "estimated_rows": 925
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "78.67"
+        },
+        "upper": null,
+        "sql": "\"amount \"\"EUR\"\"\" >= 78.67",
+        "estimated_rows": 950
+      }
+    ],
+    "skew_score": 1.013,
+    "warnings": [],
+    "source": null
+  }
+}

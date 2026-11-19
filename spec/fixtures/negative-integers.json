@@ -1,0 +1,74 @@
+{
+  "description": "Negative int4 values: bounds -1000000, -5000, -100, -1 with 600 rows, three buckets of 200. The targets 200 and 400 are met exactly at the bounds -5000 and -100 (one less gives 199 and 399). Interpolation divides h_i * (x - lo), which is never negative, so the sign of the values does not affect floor division. Skew score 1.0.",
+  "input": {
+    "column": "delta",
+    "type": "int4",
+    "partitions": 3,
+    "null_rows": 0,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "-1000000",
+        "-5000",
+        "-100",
+        "-1"
+      ],
+      "rows": 600
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "delta",
+    "type": "int4",
+    "requested_partitions": 3,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 600,
+      "null": 0,
+      "non_null": 600
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"delta\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "-5000"
+        },
+        "sql": "\"delta\" < -5000",
+        "estimated_rows": 200
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "-5000"
+        },
+        "upper": {
+          "op": "<",
+          "value": "-100"
+        },
+        "sql": "\"delta\" >= -5000 AND \"delta\" < -100",
+        "estimated_rows": 200
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "-100"
+        },
+        "upper": null,
+        "sql": "\"delta\" >= -100",
+        "estimated_rows": 200
+      }
+    ],
+    "skew_score": 1.0,
+    "warnings": [],
+    "source": null
+  }
+}

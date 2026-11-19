@@ -1,0 +1,36 @@
+{
+  "description": "32768 is above the int2 maximum, 32767.",
+  "input": {
+    "column": "level",
+    "type": "int2",
+    "partitions": 5,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "0",
+        "rows": 100
+      },
+      {
+        "value": "50",
+        "rows": 30
+      },
+      {
+        "value": "32768",
+        "rows": 30
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "100"
+      ],
+      "rows": 20
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "value_out_of_range"
+    }
+  }
+}

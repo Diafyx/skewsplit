@@ -1,0 +1,87 @@
+{
+  "description": "The nearest candidate example of spec section 4.3. Bounds 1, 10, 20, 1000000 with 900 rows: three buckets of 300, the last spanning a gap such as deleted rows leave. Targets 225, 450 and 675. For 225, x_hi = 8 (G = 300 * 7 / 9 = 233) is 8 away and x_lo = 7 (G = 200) is 25 away, so 8. 450 is met exactly at 15 (300 + 300 * 5 / 10) and 675 at 250015 (600 + 300 * 249995 / 999980). The ranges hold 233, 217, 225 and 225 rows. Skew score (2 * 233 * 4 * 1000 + 900) / 1800 = 1036.",
+  "input": {
+    "column": "order_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "1",
+        "10",
+        "20",
+        "1000000"
+      ],
+      "rows": 900
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "order_id",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 900,
+      "null": 0,
+      "non_null": 900
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"order_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "8"
+        },
+        "sql": "\"order_id\" < 8",
+        "estimated_rows": 233
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "8"
+        },
+        "upper": {
+          "op": "<",
+          "value": "15"
+        },
+        "sql": "\"order_id\" >= 8 AND \"order_id\" < 15",
+        "estimated_rows": 217
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "15"
+        },
+        "upper": {
+          "op": "<",
+          "value": "250015"
+        },
+        "sql": "\"order_id\" >= 15 AND \"order_id\" < 250015",
+        "estimated_rows": 225
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "250015"
+        },
+        "upper": null,
+        "sql": "\"order_id\" >= 250015",
+        "estimated_rows": 225
+      }
+    ],
+    "skew_score": 1.036,
+    "warnings": [],
+    "source": null
+  }
+}

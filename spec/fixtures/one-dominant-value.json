@@ -1,0 +1,96 @@
+{
+  "description": "The example of spec sections 1, 5, 7 and 10. R = 960. Value 42 is a candidate (500 * 4 >= 960) and becomes the one dominant value ((4 - 1) / 2 = 1); value 7 is not (60 * 4 = 240). Buckets hold 100 rows. Segment below 42: 60 rows of value 7 plus 100 * 41 / 249 = 16 histogram rows, 76. Segment above 42: 384. Three ranges: one per segment, and the extra to the larger segment (384 > 76). Its target 192 is met exactly at 520: G(520) - G(42) = 268 - 76 = 192. Skew score (2 * 500 * 4 * 1000 + 1060) / 2120 = 1887.",
+  "input": {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 60
+      },
+      {
+        "value": "42",
+        "rows": 500
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 400
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "customer_id",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1060,
+      "null": 100,
+      "non_null": 960
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"customer_id\" IS NULL",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "42"
+        },
+        "sql": "\"customer_id\" < 42",
+        "estimated_rows": 76
+      },
+      {
+        "kind": "value",
+        "value": "42",
+        "sql": "\"customer_id\" = 42",
+        "estimated_rows": 500
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "42"
+        },
+        "upper": {
+          "op": "<",
+          "value": "520"
+        },
+        "sql": "\"customer_id\" > 42 AND \"customer_id\" < 520",
+        "estimated_rows": 192
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "520"
+        },
+        "upper": null,
+        "sql": "\"customer_id\" >= 520",
+        "estimated_rows": 192
+      }
+    ],
+    "skew_score": 1.887,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "42",
+        "rows": 500
+      }
+    ],
+    "source": null
+  }
+}

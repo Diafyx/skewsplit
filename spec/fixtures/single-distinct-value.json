@@ -1,0 +1,75 @@
+{
+  "description": "One value, 1, holds all 500 rows and is dominant (500 * 4 >= 500). Both segments hold 0 rows. N - D = 3 ranges over 2 segments leave one extra, which goes to the lowest segment on the tie (0 * 1 = 0 * 1). Its target 0 * 1 / 2 = 0 gives no split point. The plan is < 1, = 1, > 1: fewer_partitions (requested 4, planned 3). Skew score 500 * 4 / 500 = 4.0.",
+  "input": {
+    "column": "flag",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "1",
+        "rows": 500
+      }
+    ],
+    "histogram": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "flag",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 500,
+      "null": 0,
+      "non_null": 500
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"flag\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "1"
+        },
+        "sql": "\"flag\" < 1",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "1",
+        "sql": "\"flag\" = 1",
+        "estimated_rows": 500
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "1"
+        },
+        "upper": null,
+        "sql": "\"flag\" > 1",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": 4.0,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "1",
+        "rows": 500
+      },
+      {
+        "code": "fewer_partitions",
+        "requested": 4,
+        "planned": 3
+      }
+    ],
+    "source": null
+  }
+}

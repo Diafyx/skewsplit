@@ -1,0 +1,36 @@
+{
+  "description": "scale is given for an int4 column.",
+  "input": {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 60
+      },
+      {
+        "value": "42",
+        "rows": 500
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 400
+    },
+    "scale": 0
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "unsupported_type"
+    }
+  }
+}

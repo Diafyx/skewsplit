@@ -1,0 +1,32 @@
+{
+  "description": "0.125 has three digits after the point and the scale is 2 (spec section 2).",
+  "input": {
+    "column": "amount \"EUR\"",
+    "type": "numeric",
+    "scale": 2,
+    "partitions": 4,
+    "null_rows": 50,
+    "mcv": [
+      {
+        "value": "0.125",
+        "rows": 800
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "-50.5",
+        "0",
+        "19.99",
+        "100",
+        "2500.75"
+      ],
+      "rows": 3000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_value"
+    }
+  }
+}

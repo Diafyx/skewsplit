@@ -1,0 +1,110 @@
+{
+  "description": "The type limit example of spec section 4.3. Value 0 (100 rows) is dominant: 100 * 5 >= 180, while 50 and 32767 (30 rows each) are not (150 < 180). The segment above 0 holds 80 rows: 20 histogram rows over 1 to 100 and the two common values. N - D = 4 ranges: one below 0, three above. Targets 26 and 53. For 26, x_hi = 51 (G = 10 + 30 = 40) is 14 away and x_lo = 50 (G = 9) is 17 away, so 51. For 53, x_hi would be 32768, above the int2 maximum, so x_lo = 32767 (G = 50) is taken. Skew score (2 * 100 * 5 * 1000 + 180) / 360 = 2778.",
+  "input": {
+    "column": "level",
+    "type": "int2",
+    "partitions": 5,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "0",
+        "rows": 100
+      },
+      {
+        "value": "50",
+        "rows": 30
+      },
+      {
+        "value": "32767",
+        "rows": 30
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "100"
+      ],
+      "rows": 20
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "level",
+    "type": "int2",
+    "requested_partitions": 5,
+    "planned_partitions": 5,
+    "rows": {
+      "total": 180,
+      "null": 0,
+      "non_null": 180
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"level\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "0"
+        },
+        "sql": "\"level\" < 0",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "0",
+        "sql": "\"level\" = 0",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "0"
+        },
+        "upper": {
+          "op": "<",
+          "value": "51"
+        },
+        "sql": "\"level\" > 0 AND \"level\" < 51",
+        "estimated_rows": 40
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "51"
+        },
+        "upper": {
+          "op": "<",
+          "value": "32767"
+        },
+        "sql": "\"level\" >= 51 AND \"level\" < 32767",
+        "estimated_rows": 10
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "32767"
+        },
+        "upper": null,
+        "sql": "\"level\" >= 32767",
+        "estimated_rows": 30
+      }
+    ],
+    "skew_score": 2.778,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "0",
+        "rows": 100
+      }
+    ],
+    "source": null
+  }
+}

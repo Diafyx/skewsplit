@@ -1,0 +1,130 @@
+{
+  "description": "N = 6 isolates up to (6 - 1) / 2 = 2 values. R = 10000, so a candidate needs rows * 6 >= 10000: 7 (3000 rows), 42 (2500) and 99 (1700). The two largest, 7 and 42, are dominant; 99 gets dominant_value_not_isolated and stays in a range. Buckets hold 560 rows. Segments: below 7, 560 * 6 / 199 = 16 rows; between 7 and 42, G(42) - G(7) = 115 - 16 = 99; above 42, 4385 (the rest of the histogram and value 99). Four ranges: one per segment, the extra to the largest. Its target 4385 / 2 = 2192 is met exactly at 217. The largest predicate is = 7: skew score 3000 * 6 / 10000 = 1.8.",
+  "input": {
+    "column": "tenant_id",
+    "type": "int4",
+    "partitions": 6,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 3000
+      },
+      {
+        "value": "42",
+        "rows": 2500
+      },
+      {
+        "value": "99",
+        "rows": 1700
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "200",
+        "400",
+        "600",
+        "800",
+        "1000"
+      ],
+      "rows": 2800
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "tenant_id",
+    "type": "int4",
+    "requested_partitions": 6,
+    "planned_partitions": 6,
+    "rows": {
+      "total": 10000,
+      "null": 0,
+      "non_null": 10000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"tenant_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "7"
+        },
+        "sql": "\"tenant_id\" < 7",
+        "estimated_rows": 16
+      },
+      {
+        "kind": "value",
+        "value": "7",
+        "sql": "\"tenant_id\" = 7",
+        "estimated_rows": 3000
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "7"
+        },
+        "upper": {
+          "op": "<",
+          "value": "42"
+        },
+        "sql": "\"tenant_id\" > 7 AND \"tenant_id\" < 42",
+        "estimated_rows": 99
+      },
+      {
+        "kind": "value",
+        "value": "42",
+        "sql": "\"tenant_id\" = 42",
+        "estimated_rows": 2500
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "42"
+        },
+        "upper": {
+          "op": "<",
+          "value": "217"
+        },
+        "sql": "\"tenant_id\" > 42 AND \"tenant_id\" < 217",
+        "estimated_rows": 2192
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "217"
+        },
+        "upper": null,
+        "sql": "\"tenant_id\" >= 217",
+        "estimated_rows": 2193
+      }
+    ],
+    "skew_score": 1.8,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "7",
+        "rows": 3000
+      },
+      {
+        "code": "dominant_value",
+        "value": "42",
+        "rows": 2500
+      },
+      {
+        "code": "dominant_value_not_isolated",
+        "value": "99",
+        "rows": 1700
+      }
+    ],
+    "source": null
+  }
+}

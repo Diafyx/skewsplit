@@ -1,0 +1,91 @@
+{
+  "description": "Bounds span the int8 range: -9223372036854775808, 0 and 9223372036854775806 with 1000 rows (two buckets of 500), plus 10 rows at the int8 maximum 9223372036854775807. R = 1010 and nothing is a candidate (10 * 4 < 1010). Targets 252, 505 and 757. Interpolating multiplies 500 by an ordinal difference near 2^63, which needs more than 64 bits. Each split point is the smallest ordinal that reaches its target (one less falls one row short, which is farther). The last range holds the 10 rows at the maximum. Skew score (2 * 253 * 4 * 1000 + 1010) / 2020 = 1002.",
+  "input": {
+    "column": "hash",
+    "type": "int8",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "9223372036854775807",
+        "rows": 10
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "-9223372036854775808",
+        "0",
+        "9223372036854775806"
+      ],
+      "rows": 1000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "hash",
+    "type": "int8",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1010,
+      "null": 0,
+      "non_null": 1010
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"hash\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "-4574792530279968800"
+        },
+        "sql": "\"hash\" < -4574792530279968800",
+        "estimated_rows": 252
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "-4574792530279968800"
+        },
+        "upper": {
+          "op": "<",
+          "value": "92233720368547759"
+        },
+        "sql": "\"hash\" >= -4574792530279968800 AND \"hash\" < 92233720368547759",
+        "estimated_rows": 253
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "92233720368547759"
+        },
+        "upper": {
+          "op": "<",
+          "value": "4740813226943354765"
+        },
+        "sql": "\"hash\" >= 92233720368547759 AND \"hash\" < 4740813226943354765",
+        "estimated_rows": 252
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "4740813226943354765"
+        },
+        "upper": null,
+        "sql": "\"hash\" >= 4740813226943354765",
+        "estimated_rows": 253
+      }
+    ],
+    "skew_score": 1.002,
+    "warnings": [],
+    "source": null
+  }
+}

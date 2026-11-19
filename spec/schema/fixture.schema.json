@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Diafyx/skewsplit/blob/main/spec/schema/fixture.schema.json",
+  "title": "skewsplit golden fixture",
+  "description": "One planner input and the output every implementation must produce for it, as defined in spec/SPEC.md. Warning and error messages are left out: their wording is not part of the contract.",
+  "type": "object",
+  "required": ["description", "input", "expected"],
+  "properties": {
+    "description": {
+      "description": "How the expected output was derived, with the numbers that matter.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": true,
+    "expected": true
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "input": {"$ref": "#/$defs/input"},
+        "expected": {"$ref": "#/$defs/plan"}
+      }
+    },
+    {
+      "description": "An error fixture. Its input is invalid on purpose, so it may be any JSON value.",
+      "properties": {
+        "expected": {"$ref": "#/$defs/error"}
+      }
+    }
+  ],
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "value": {"type": "string"},
+    "type": {"enum": ["int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz"]},
+    "scale": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "spec_version": {"const": "1.0"},
+    "input": {
+      "description": "A valid planner input (spec section 1).",
+      "type": "object",
+      "required": ["column", "type", "partitions", "null_rows", "mcv", "histogram"],
+      "properties": {
+        "column": {"type": "string", "minLength": 1, "not": {"pattern": "\u0000"}},
+        "type": {"$ref": "#/$defs/type"},
+        "scale": {"$ref": "#/$defs/scale"},
+        "partitions": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "null_rows": {"$ref": "#/$defs/count"},
+        "mcv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value", "rows"],
+            "properties": {
+              "value": {"$ref": "#/$defs/value"},
+              "rows": {"allOf": [{"$ref": "#/$defs/count"}, {"minimum": 1}]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "histogram": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["bounds", "rows"],
+              "properties": {
+                "bounds": {"type": "array", "items": {"$ref": "#/$defs/value"}, "minItems": 2},
+                "rows": {"$ref": "#/$defs/count"}
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "source": true
+      },
+      "additionalProperties": false,
+      "$ref": "#/$defs/scale_only_for_numeric"
+    },
+    "scale_only_for_numeric": {
+      "if": {"properties": {"type": {"const": "numeric"}}, "required": ["type"]},
+      "then": {"required": ["scale"]},
+      "else": {"not": {"required": ["scale"]}}
+    },
+    "plan": {
+      "description": "A plan (spec section 10).",
+      "type": "object",
+      "required": [
+        "spec_version", "column", "type", "requested_partitions", "planned_partitions",
+        "rows", "predicates", "skew_score", "warnings", "source"
+      ],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "column": {"type": "string", "minLength": 1},
+        "type": {"$ref": "#/$defs/type"},
+        "scale": {"$ref": "#/$defs/scale"},
+        "requested_partitions": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "planned_partitions": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "rows": {
+          "type": "object",
+          "required": ["total", "null", "non_null"],
+          "properties": {
+            "total": {"$ref": "#/$defs/count"}, "null": {"$ref": "#/$defs/count"},
+            "non_null": {"$ref": "#/$defs/count"}
+          },
+          "additionalProperties": false
+        },
+        "predicates": {
+          "type": "array",
+          "prefixItems": [{"$ref": "#/$defs/null_predicate"}],
+          "items": {
+            "oneOf": [{"$ref": "#/$defs/value_predicate"}, {"$ref": "#/$defs/range_predicate"}]
+          },
+          "minItems": 2
+        },
+        "skew_score": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0}]},
+        "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}},
+        "source": true
+      },
+      "additionalProperties": false,
+      "$ref": "#/$defs/scale_only_for_numeric"
+    },
+    "null_predicate": {
+      "type": "object",
+      "required": ["kind", "sql", "estimated_rows"],
+      "properties": {
+        "kind": {"const": "null"},
+        "sql": {"type": "string", "pattern": " IS NULL$"},
+        "estimated_rows": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "value_predicate": {
+      "type": "object",
+      "required": ["kind", "value", "sql", "estimated_rows"],
+      "properties": {
+        "kind": {"const": "value"},
+        "value": {"$ref": "#/$defs/value"},
+        "sql": {"type": "string", "pattern": " = "},
+        "estimated_rows": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "range_predicate": {
+      "type": "object",
+      "required": ["kind", "lower", "upper", "sql", "estimated_rows"],
+      "properties": {
+        "kind": {"const": "range"},
+        "lower": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["op", "value"],
+              "properties": {"op": {"enum": [">=", ">"]}, "value": {"$ref": "#/$defs/value"}},
+              "additionalProperties": false
+            }
+          ]
+        },
+        "upper": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["op", "value"],
+              "properties": {"op": {"const": "<"}, "value": {"$ref": "#/$defs/value"}},
+              "additionalProperties": false
+            }
+          ]
+        },
+        "sql": {"type": "string", "minLength": 1},
+        "estimated_rows": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "warning": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["code", "value", "rows"],
+          "properties": {
+            "code": {"enum": ["dominant_value", "dominant_value_not_isolated"]},
+            "value": {"$ref": "#/$defs/value"},
+            "rows": {"allOf": [{"$ref": "#/$defs/count"}, {"minimum": 1}]}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "requested", "planned"],
+          "properties": {
+            "code": {"const": "fewer_partitions"},
+            "requested": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "planned": {"type": "integer", "minimum": 1, "maximum": 10000}
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "rows"],
+          "properties": {"code": {"const": "nulls_exceed_share"}, "rows": {"$ref": "#/$defs/count"}},
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code"],
+          "properties": {"code": {"const": "no_rows"}},
+          "additionalProperties": false
+        }
+      ]
+    },
+    "error": {
+      "description": "An error (spec section 9).",
+      "type": "object",
+      "required": ["spec_version", "error"],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "error": {
+          "type": "object",
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_input", "invalid_column", "unsupported_type", "invalid_partitions",
+                "invalid_rows", "invalid_value", "value_out_of_range", "duplicate_value",
+                "invalid_histogram"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

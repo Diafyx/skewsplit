@@ -1,0 +1,81 @@
+{
+  "description": "The dropped split point example of spec section 4.3. Bounds 1, 5, 5, 5, 100 with 400 rows: four buckets of 100, the middle two all at 5. Targets 100, 200 and 300. 100 is met exactly at 5. For 200, x_hi = 6 (G = 301) is 101 away and x_lo = 5 (G = 100) is 100 away, so 5, which does not raise G above the previous split point and is dropped. For 300, 6 (G = 301) is 1 away. Three ranges hold 100, 201 and 99 rows: fewer_partitions (requested 4, planned 3). Skew score (2 * 201 * 4 * 1000 + 400) / 800 = 2010.",
+  "input": {
+    "column": "batch",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "1",
+        "5",
+        "5",
+        "5",
+        "100"
+      ],
+      "rows": 400
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "batch",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 400,
+      "null": 0,
+      "non_null": 400
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"batch\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "5"
+        },
+        "sql": "\"batch\" < 5",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "5"
+        },
+        "upper": {
+          "op": "<",
+          "value": "6"
+        },
+        "sql": "\"batch\" >= 5 AND \"batch\" < 6",
+        "estimated_rows": 201
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "6"
+        },
+        "upper": null,
+        "sql": "\"batch\" >= 6",
+        "estimated_rows": 99
+      }
+    ],
+    "skew_score": 2.01,
+    "warnings": [
+      {
+        "code": "fewer_partitions",
+        "requested": 4,
+        "planned": 3
+      }
+    ],
+    "source": null
+  }
+}

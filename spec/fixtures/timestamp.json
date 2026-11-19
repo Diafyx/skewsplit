@@ -1,0 +1,73 @@
+{
+  "description": "Microsecond ordinals within one day: bounds 00:00:00, 06:30:00.5 and 23:59:59.999999 with 999 rows, two buckets of 999 / 2 = 499 and 999 - 499 = 500 rows, and 1 NULL row. Targets 333 and 666 are reached inside buckets; each split point is the smallest ordinal reaching its target, as one microsecond earlier falls one row short. Output drops trailing zeros of the fraction: 04:20:15.96493 and 12:20:42.333. Skew score (2 * 333 * 3 * 1000 + 1000) / 2000 = 999, so 0.999.",
+  "input": {
+    "column": "created_at",
+    "type": "timestamp",
+    "partitions": 3,
+    "null_rows": 1,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "2026-11-18 00:00:00",
+        "2026-11-18 06:30:00.5",
+        "2026-11-18 23:59:59.999999"
+      ],
+      "rows": 999
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "created_at",
+    "type": "timestamp",
+    "requested_partitions": 3,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 1000,
+      "null": 1,
+      "non_null": 999
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"created_at\" IS NULL",
+        "estimated_rows": 1
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "2026-11-18 04:20:15.96493"
+        },
+        "sql": "\"created_at\" < '2026-11-18 04:20:15.96493'::timestamp",
+        "estimated_rows": 333
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-11-18 04:20:15.96493"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2026-11-18 12:20:42.333"
+        },
+        "sql": "\"created_at\" >= '2026-11-18 04:20:15.96493'::timestamp AND \"created_at\" < '2026-11-18 12:20:42.333'::timestamp",
+        "estimated_rows": 333
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-11-18 12:20:42.333"
+        },
+        "upper": null,
+        "sql": "\"created_at\" >= '2026-11-18 12:20:42.333'::timestamp",
+        "estimated_rows": 333
+      }
+    ],
+    "skew_score": 0.999,
+    "warnings": [],
+    "source": null
+  }
+}

@@ -58,3 +58,22 @@ updates:
       - "dependencies"
       - "type/build"
       - "area/python"
+
+  # PySpark for the benchmark, pinned by hash in bench/requirements.txt. The
+  # PostgreSQL JDBC driver is pinned in the Makefile, where Dependabot cannot
+  # see it.
+  - package-ecosystem: "pip"
+    directory: "/bench"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      bench:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "type/build"
+      - "area/bench"

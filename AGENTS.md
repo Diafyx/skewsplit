@@ -11,7 +11,8 @@ everything there applies to agents too. This file is the short version.
 | `python/` | The `skewsplit` package (src layout) and its tests |
 | `python/src/skewsplit/core/` | The pure planner: standard library only, no I/O |
 | `spec/` | Behaviour spec and golden fixtures shared by every implementation |
-| `rust/`, `bench/` | Later: the Rust crate and the CI benchmark |
+| `bench/` | The Spark benchmark, run in CI by `bench.yml` |
+| `rust/` | Later: the Rust crate |
 | `scripts/` | Repository tooling used by make targets and CI (standard library only) |
 | `docs/adr/` | Architecture decision records |
 
@@ -29,8 +30,8 @@ uv run --frozen pytest python/tests/unit/test_version.py   # one file
 Use `uv run --frozen`, so `uv.lock` never changes by accident. Change
 dependencies only on purpose, with `uv lock`.
 
-PostgreSQL and Spark tests (`make py-integration`, `make spark-e2e`) run in CI
-only. Do not start Docker or install a database to run them.
+PostgreSQL and Spark tests (`make py-integration`, `make spark-e2e`) and the
+benchmark (`make bench`) run in CI only. Do not start Docker or install a database to run them.
 
 ## Rules that are easy to miss
 

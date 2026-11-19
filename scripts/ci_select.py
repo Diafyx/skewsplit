@@ -22,11 +22,12 @@ PYTHON = frozenset({"py-core", "py-adapters", "cli"})
 GROUPS = SHARED | PYTHON | {"rust", "bench", "docs", "repo"}
 
 # The groups that select each job, besides the shared ones. `lint` always runs
-# and `pr-size` runs on every pull request.
+# and `pr-size` runs on every pull request. The benchmark helpers in bench/ are
+# unit-tested in py-unit; the benchmark itself runs in bench.yml.
 JOBS: dict[str, frozenset[str]] = {
-    "py-unit": PYTHON,
+    "py-unit": PYTHON | {"bench"},
     "py-lowest": PYTHON,
-    "coverage": PYTHON,
+    "coverage": PYTHON | {"bench"},
     "packaging": PYTHON,
     "docs": PYTHON | {"docs"},
     "conformance": PYTHON,

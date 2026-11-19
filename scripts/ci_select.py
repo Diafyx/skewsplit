@@ -29,7 +29,12 @@ JOBS: dict[str, frozenset[str]] = {
     "coverage": PYTHON,
     "packaging": PYTHON,
     "docs": PYTHON | {"docs"},
+    "conformance": PYTHON,
+    "core-bench": frozenset({"py-core"}),
 }
+# Jobs outside ci-gate: they report and never block, so they are not skips the
+# gate needs to accept.
+NOT_GATED = frozenset({"core-bench"})
 ALWAYS = ("lint",)
 PR_ONLY = ("pr-size",)
 FULL_LABEL = "ci:full"
@@ -52,7 +57,7 @@ def select(event: str, groups: set[str], labels: set[str], *, full: bool) -> dic
 def render(selected: dict[str, bool]) -> str:
     """Format the selection as GitHub Actions step outputs."""
     lines = [f"{job}={str(run).lower()}" for job, run in selected.items()]
-    skips = ",".join(job for job, run in selected.items() if not run)
+    skips = ",".join(job for job, run in selected.items() if not run and job not in NOT_GATED)
     lines.append(f"allowed-skips={skips}")
     return "\n".join(lines) + "\n"
 

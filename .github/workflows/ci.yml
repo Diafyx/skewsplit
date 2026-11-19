@@ -40,6 +40,8 @@ jobs:
       coverage: ${{ steps.select.outputs.coverage }}
       packaging: ${{ steps.select.outputs.packaging }}
       docs: ${{ steps.select.outputs.docs }}
+      conformance: ${{ steps.select.outputs.conformance }}
+      core-bench: ${{ steps.select.outputs.core-bench }}
       allowed-skips: ${{ steps.select.outputs.allowed-skips }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -241,6 +243,61 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The golden fixtures and the spec invariants, with the ci Hypothesis profile.
+  conformance:
+    name: conformance (python)
+    needs: changes
+    if: needs.changes.outputs.conformance == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make conformance
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "conformance (python)" reports/junit-conformance.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: junit-conformance
+          path: reports/junit-conformance.xml
+          retention-days: 7
+
+  # Planner micro-benchmarks when the core changes. Timings on shared runners
+  # vary, so this job reports in its summary and is not part of ci-gate.
+  core-bench:
+    name: core-bench
+    needs: changes
+    if: needs.changes.outputs.core-bench == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make bench-core
+      - name: Summarise benchmarks
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/benchmark_summary.py "Planner benchmarks" reports/benchmark-core.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: benchmark-core
+          path: reports/benchmark-core.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Sets exactly one size/* label and fails a size/XXL pull request whose
   # "Why is this PR large?" section is empty.
   pr-size:
@@ -288,7 +345,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, lint, py-unit, py-lowest, coverage, packaging, docs, pr-size]
+    needs: [changes, lint, py-unit, py-lowest, coverage, packaging, docs, conformance, pr-size]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

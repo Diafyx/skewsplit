@@ -30,11 +30,11 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size pr-hygiene check-fixtures clean
+	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance bench-core clean
 
 check: lint py-unit coverage packaging docs
 
-check-all: check py-lowest
+check-all: check py-lowest conformance
 
 # ruff, mypy, spelling, workflow audits, the issue forms and Dependabot config
 # against their schemas, and the golden fixtures.
@@ -106,6 +106,20 @@ docs:
 	$(SCRIPT) scripts/check_links.py $(MD_FILES)
 	changed=$$(git diff --name-only --diff-filter=d $(COMPARE)... -- $(MD_PATHSPEC)); \
 	if [[ -n "$$changed" ]]; then $(SCRIPT) scripts/check_links.py --external $$changed; fi
+
+# The golden fixtures and the spec invariants, with the ci Hypothesis profile
+# (ten times the examples of a plain run). HYPOTHESIS_PROFILE=nightly searches longer.
+HYPOTHESIS_PROFILE ?= ci
+conformance:
+	mkdir -p $(REPORTS)
+	HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) $(UV_RUN) pytest -m conformance \
+		--junitxml=$(REPORTS)/junit-conformance.xml
+
+# Time the planner micro-benchmarks. CI reports them and never gates on them.
+bench-core:
+	mkdir -p $(REPORTS)
+	$(UV_RUN) pytest -m '' -p no:randomly --benchmark-enable \
+		--benchmark-json=$(REPORTS)/benchmark-core.json python/tests/unit/test_planner_benchmarks.py
 
 # The oldest allowed versions of every direct dependency, in a separate
 # environment so uv.lock is never touched.

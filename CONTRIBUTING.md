@@ -75,6 +75,13 @@ with a message unless you point them at a server you run yourself.
 - `spec/fixtures/*.json` are the shared truth for every implementation. A
   change to the spec changes them in the same pull request, and
   `make check-fixtures` checks them; see [spec/README.md](spec/README.md).
+- `make conformance` runs every fixture against the Python core, plus the
+  Hypothesis invariants of the spec (every value matches exactly one
+  predicate, and so on), with the `ci` profile. The `conformance` CI job runs
+  it. `HYPOTHESIS_PROFILE` picks the profile: `dev` (default), `ci` or
+  `nightly`.
+- `make bench-core` times the planner. The `core-bench` job runs it when the
+  core changes and reports the timings in its summary; it never gates.
 - Every `>>>` example in a Markdown file is run by the docs check.
 - A bug fix comes with a test that fails without the fix.
 - **Flaky tests** are never retried silently. Label the issue `flaky`, open an

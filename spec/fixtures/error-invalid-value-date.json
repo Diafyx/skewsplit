@@ -1,0 +1,25 @@
+{
+  "description": "2026-02-30 is not a calendar date (the example of spec section 9).",
+  "input": {
+    "column": "closed_on",
+    "type": "date",
+    "partitions": 3,
+    "null_rows": 700,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "2026-01-01",
+        "2026-02-30",
+        "2026-07-01",
+        "2026-10-01"
+      ],
+      "rows": 300
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_value"
+    }
+  }
+}

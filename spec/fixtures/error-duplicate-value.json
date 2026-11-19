@@ -1,0 +1,35 @@
+{
+  "description": "Value 7 appears twice in mcv.",
+  "input": {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 60
+      },
+      {
+        "value": "7",
+        "rows": 500
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 400
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "duplicate_value"
+    }
+  }
+}

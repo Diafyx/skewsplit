@@ -72,7 +72,9 @@ with a message unless you point them at a server you run yourself.
   excludes nothing.
 - The core uses the standard library only and does no I/O. A test enforces
   this; see [ADR 0001](docs/adr/0001-monorepo-and-pure-core.md).
-- `spec/fixtures/*.json` are the shared truth for every implementation.
+- `spec/fixtures/*.json` are the shared truth for every implementation. A
+  change to the spec changes them in the same pull request, and
+  `make check-fixtures` checks them; see [spec/README.md](spec/README.md).
 - Every `>>>` example in a Markdown file is run by the docs check.
 - A bug fix comes with a test that fails without the fix.
 - **Flaky tests** are never retried silently. Label the issue `flaky`, open an

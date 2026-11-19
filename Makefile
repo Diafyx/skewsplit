@@ -30,15 +30,15 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size pr-hygiene clean
+	py-integration spark-e2e pr-size pr-hygiene check-fixtures clean
 
 check: lint py-unit coverage packaging docs
 
 check-all: check py-lowest
 
-# ruff, mypy, spelling, workflow audits, and the issue forms and Dependabot config
-# against their schemas.
-lint: check-filters
+# ruff, mypy, spelling, workflow audits, the issue forms and Dependabot config
+# against their schemas, and the golden fixtures.
+lint: check-filters check-fixtures
 	$(UV_RUN) ruff check
 	$(UV_RUN) ruff format --check
 	$(UV_RUN) mypy
@@ -55,6 +55,13 @@ lint: check-filters
 # Every tracked file must match a group in .github/filters.yml.
 check-filters:
 	$(SCRIPT) scripts/check_filters.py
+
+# The golden fixtures against their schema, then against the rules of the spec
+# that need no planner. CI runs this in the lint job, on every pull request.
+check-fixtures:
+	$(UV_RUN) check-jsonschema --check-metaschema spec/schema/fixture.schema.json
+	$(UV_RUN) check-jsonschema --schemafile spec/schema/fixture.schema.json spec/fixtures/*.json
+	$(SCRIPT) scripts/check_fixtures.py
 
 # Unit and property tests with coverage data. Run from a clean data file so a
 # stale run cannot hide missing lines. CI sets COVERAGE_FILE per leg.

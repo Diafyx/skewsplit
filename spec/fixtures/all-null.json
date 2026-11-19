@@ -1,0 +1,50 @@
+{
+  "description": "The second example of spec section 8. Only NULL rows: R = 0, there are no candidates and every target is 0, so the one range has no boundary and is \"x\" IS NOT NULL. One non-NULL predicate for N = 3 gives fewer_partitions (requested 3, planned 1), and 10 * 3 > 10 gives nulls_exceed_share. Skew score 10 * 3 / 10 = 3.0.",
+  "input": {
+    "column": "x",
+    "type": "int4",
+    "partitions": 3,
+    "null_rows": 10,
+    "mcv": [],
+    "histogram": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "x",
+    "type": "int4",
+    "requested_partitions": 3,
+    "planned_partitions": 1,
+    "rows": {
+      "total": 10,
+      "null": 10,
+      "non_null": 0
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"x\" IS NULL",
+        "estimated_rows": 10
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": null,
+        "sql": "\"x\" IS NOT NULL",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": 3.0,
+    "warnings": [
+      {
+        "code": "fewer_partitions",
+        "requested": 3,
+        "planned": 1
+      },
+      {
+        "code": "nulls_exceed_share",
+        "rows": 10
+      }
+    ],
+    "source": null
+  }
+}

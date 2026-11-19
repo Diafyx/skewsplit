@@ -1,0 +1,103 @@
+{
+  "description": "A placeholder timestamp, 1970-01-01 00:00:00+00, holds 4000 of 10000 rows and is dominant (4000 * 5 >= 10000; N = 5 isolates up to 2). The segment below it is empty and gets one range; the segment above gets the other three. Its 6000 histogram rows fill two buckets of 3000, from 2025-01-01 to 2025-07-01 12:00 (181.5 days) and on to 2026-01-01 (183.5 days). The targets 2000 and 4000 are met exactly at 2025-05-02 00:00 (two thirds of the first bucket) and 2025-08-31 16:00 (one third of the second). Skew score 4000 * 5 / 10000 = 2.0.",
+  "input": {
+    "column": "updated_at",
+    "type": "timestamptz",
+    "partitions": 5,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "1970-01-01 00:00:00+00",
+        "rows": 4000
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "2025-01-01 00:00:00+00",
+        "2025-07-01 12:00:00+00",
+        "2026-01-01 00:00:00+00"
+      ],
+      "rows": 6000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "updated_at",
+    "type": "timestamptz",
+    "requested_partitions": 5,
+    "planned_partitions": 5,
+    "rows": {
+      "total": 10000,
+      "null": 0,
+      "non_null": 10000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"updated_at\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "1970-01-01 00:00:00+00"
+        },
+        "sql": "\"updated_at\" < '1970-01-01 00:00:00+00'::timestamptz",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "1970-01-01 00:00:00+00",
+        "sql": "\"updated_at\" = '1970-01-01 00:00:00+00'::timestamptz",
+        "estimated_rows": 4000
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "1970-01-01 00:00:00+00"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2025-05-02 00:00:00+00"
+        },
+        "sql": "\"updated_at\" > '1970-01-01 00:00:00+00'::timestamptz AND \"updated_at\" < '2025-05-02 00:00:00+00'::timestamptz",
+        "estimated_rows": 2000
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2025-05-02 00:00:00+00"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2025-08-31 16:00:00+00"
+        },
+        "sql": "\"updated_at\" >= '2025-05-02 00:00:00+00'::timestamptz AND \"updated_at\" < '2025-08-31 16:00:00+00'::timestamptz",
+        "estimated_rows": 2000
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2025-08-31 16:00:00+00"
+        },
+        "upper": null,
+        "sql": "\"updated_at\" >= '2025-08-31 16:00:00+00'::timestamptz",
+        "estimated_rows": 2000
+      }
+    ],
+    "skew_score": 2.0,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "1970-01-01 00:00:00+00",
+        "rows": 4000
+      }
+    ],
+    "source": null
+  }
+}

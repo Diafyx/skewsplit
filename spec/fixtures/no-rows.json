@@ -1,0 +1,49 @@
+{
+  "description": "An empty table. The plan is still \"x\" IS NULL and \"x\" IS NOT NULL, each with 0 estimated rows, so rows added later are read. One non-NULL predicate for N = 4 gives fewer_partitions. total_rows is 0, so the skew score is null and no_rows is given; nulls_exceed_share is not, since 0 * 4 > 0 is false.",
+  "input": {
+    "column": "x",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [],
+    "histogram": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "x",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 1,
+    "rows": {
+      "total": 0,
+      "null": 0,
+      "non_null": 0
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"x\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": null,
+        "sql": "\"x\" IS NOT NULL",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": null,
+    "warnings": [
+      {
+        "code": "fewer_partitions",
+        "requested": 4,
+        "planned": 1
+      },
+      {
+        "code": "no_rows"
+      }
+    ],
+    "source": null
+  }
+}

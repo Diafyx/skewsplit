@@ -1,0 +1,25 @@
+{
+  "description": "The histogram field is missing. A column without a histogram has histogram null.",
+  "input": {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 60
+      },
+      {
+        "value": "42",
+        "rows": 500
+      }
+    ]
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

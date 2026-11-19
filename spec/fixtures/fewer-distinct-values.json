@@ -1,0 +1,131 @@
+{
+  "description": "Three int2 values with 100 rows each and N = 8. Each is a candidate (100 * 8 >= 300) and up to (8 - 1) / 2 = 3 values can be isolated, so all three are dominant. The four segments hold 0 rows; the one extra range goes to the lowest segment, and its target 0 gives no split point. Ranges such as > 1 AND < 2 contain no integer but stay, as the plan is built the same way for every type. 7 predicates for N = 8: fewer_partitions. Skew score (2 * 100 * 8 * 1000 + 300) / 600 = 2667.",
+  "input": {
+    "column": "grade",
+    "type": "int2",
+    "partitions": 8,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "1",
+        "rows": 100
+      },
+      {
+        "value": "2",
+        "rows": 100
+      },
+      {
+        "value": "3",
+        "rows": 100
+      }
+    ],
+    "histogram": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "grade",
+    "type": "int2",
+    "requested_partitions": 8,
+    "planned_partitions": 7,
+    "rows": {
+      "total": 300,
+      "null": 0,
+      "non_null": 300
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"grade\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "1"
+        },
+        "sql": "\"grade\" < 1",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "1",
+        "sql": "\"grade\" = 1",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "1"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2"
+        },
+        "sql": "\"grade\" > 1 AND \"grade\" < 2",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "2",
+        "sql": "\"grade\" = 2",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "2"
+        },
+        "upper": {
+          "op": "<",
+          "value": "3"
+        },
+        "sql": "\"grade\" > 2 AND \"grade\" < 3",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "3",
+        "sql": "\"grade\" = 3",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "3"
+        },
+        "upper": null,
+        "sql": "\"grade\" > 3",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": 2.667,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "1",
+        "rows": 100
+      },
+      {
+        "code": "dominant_value",
+        "value": "2",
+        "rows": 100
+      },
+      {
+        "code": "dominant_value",
+        "value": "3",
+        "rows": 100
+      },
+      {
+        "code": "fewer_partitions",
+        "requested": 8,
+        "planned": 7
+      }
+    ],
+    "source": null
+  }
+}

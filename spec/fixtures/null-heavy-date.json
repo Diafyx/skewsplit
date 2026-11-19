@@ -1,0 +1,79 @@
+{
+  "description": "The first example of spec section 8. 700 of 1000 rows are NULL and N = 3: 700 * 3 > 1000 gives nulls_exceed_share. The 300 histogram rows fill three buckets of 100 between 2026-01-01, 2026-04-01, 2026-07-01 and 2026-10-01. The targets 100 and 200 are met exactly at the bounds 2026-04-01 (ordinal 20544) and 2026-07-01 (20635). Skew score 700 * 3 / 1000 = 2.1.",
+  "input": {
+    "column": "closed_on",
+    "type": "date",
+    "partitions": 3,
+    "null_rows": 700,
+    "mcv": [],
+    "histogram": {
+      "bounds": [
+        "2026-01-01",
+        "2026-04-01",
+        "2026-07-01",
+        "2026-10-01"
+      ],
+      "rows": 300
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "closed_on",
+    "type": "date",
+    "requested_partitions": 3,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 1000,
+      "null": 700,
+      "non_null": 300
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"closed_on\" IS NULL",
+        "estimated_rows": 700
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "2026-04-01"
+        },
+        "sql": "\"closed_on\" < '2026-04-01'::date",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-04-01"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2026-07-01"
+        },
+        "sql": "\"closed_on\" >= '2026-04-01'::date AND \"closed_on\" < '2026-07-01'::date",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-07-01"
+        },
+        "upper": null,
+        "sql": "\"closed_on\" >= '2026-07-01'::date",
+        "estimated_rows": 100
+      }
+    ],
+    "skew_score": 2.1,
+    "warnings": [
+      {
+        "code": "nulls_exceed_share",
+        "rows": 700
+      }
+    ],
+    "source": null
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "description": "Dates in 2026 over four buckets of 10000 rows, plus 1500 rows on 2026-11-27, not a candidate (1500 * 4 < 41500). Targets 10375, 20750 and 31125. Each split point is the date nearest its target: 2026-03-18 (G = 10384, 9 away; 2026-03-17 has 10256, 119 away), 2026-06-09 (20792, 42 away; 2026-06-08 has 20693, 57 away) and 2026-09-23 (31160, 35 away; 2026-09-22 has 31071, 54 away). The last range holds 2026-11-27. Skew score (2 * 10408 * 4 * 1000 + 41500) / 83000 = 1003.",
+  "input": {
+    "column": "event_date",
+    "type": "date",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "2026-11-27",
+        "rows": 1500
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "2026-01-01",
+        "2026-03-15",
+        "2026-06-01",
+        "2026-09-10",
+        "2026-12-31"
+      ],
+      "rows": 40000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "event_date",
+    "type": "date",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 41500,
+      "null": 0,
+      "non_null": 41500
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"event_date\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "2026-03-18"
+        },
+        "sql": "\"event_date\" < '2026-03-18'::date",
+        "estimated_rows": 10384
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-03-18"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2026-06-09"
+        },
+        "sql": "\"event_date\" >= '2026-03-18'::date AND \"event_date\" < '2026-06-09'::date",
+        "estimated_rows": 10408
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-06-09"
+        },
+        "upper": {
+          "op": "<",
+          "value": "2026-09-23"
+        },
+        "sql": "\"event_date\" >= '2026-06-09'::date AND \"event_date\" < '2026-09-23'::date",
+        "estimated_rows": 10368
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2026-09-23"
+        },
+        "upper": null,
+        "sql": "\"event_date\" >= '2026-09-23'::date",
+        "estimated_rows": 10340
+      }
+    ],
+    "skew_score": 1.003,
+    "warnings": [],
+    "source": null
+  }
+}

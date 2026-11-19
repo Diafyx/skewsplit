@@ -1,0 +1,72 @@
+{
+  "description": "The second example of spec section 4.1. Value 1 holds 700 of 1000 rows and is a candidate (700 * 2 >= 1000), but N = 2 isolates (2 - 1) / 2 = 0 values, so it gets dominant_value_not_isolated and stays in the ranges. The target 500 has candidates x_hi = 2 (G = 700, 200 away) and x_lo = 1 (G = 0, 500 away), so the split point is 2. Skew score 700 * 2 / 1000 = 1.4.",
+  "input": {
+    "column": "country_id",
+    "type": "int4",
+    "partitions": 2,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "1",
+        "rows": 700
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "2",
+        "100",
+        "200",
+        "300"
+      ],
+      "rows": 300
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "country_id",
+    "type": "int4",
+    "requested_partitions": 2,
+    "planned_partitions": 2,
+    "rows": {
+      "total": 1000,
+      "null": 0,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"country_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "2"
+        },
+        "sql": "\"country_id\" < 2",
+        "estimated_rows": 700
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "2"
+        },
+        "upper": null,
+        "sql": "\"country_id\" >= 2",
+        "estimated_rows": 300
+      }
+    ],
+    "skew_score": 1.4,
+    "warnings": [
+      {
+        "code": "dominant_value_not_isolated",
+        "value": "1",
+        "rows": 700
+      }
+    ],
+    "source": null
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "description": "A tie between the two candidates of a target. 4 histogram rows from 0 to 4, plus 4 rows at 5 and 4 at 9: R = 12, and nothing is a candidate (4 * 2 < 12). The one target, 6, has x_hi = 6 (G = 8) and x_lo = 5 (G = 4), both 2 away; the tie goes to x_hi. Skew score (2 * 8 * 2 * 1000 + 12) / 24 = 1333.",
+  "input": {
+    "column": "seq",
+    "type": "int4",
+    "partitions": 2,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "5",
+        "rows": 4
+      },
+      {
+        "value": "9",
+        "rows": 4
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "0",
+        "4"
+      ],
+      "rows": 4
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "seq",
+    "type": "int4",
+    "requested_partitions": 2,
+    "planned_partitions": 2,
+    "rows": {
+      "total": 12,
+      "null": 0,
+      "non_null": 12
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"seq\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "6"
+        },
+        "sql": "\"seq\" < 6",
+        "estimated_rows": 8
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "6"
+        },
+        "upper": null,
+        "sql": "\"seq\" >= 6",
+        "estimated_rows": 4
+      }
+    ],
+    "skew_score": 1.333,
+    "warnings": [],
+    "source": null
+  }
+}

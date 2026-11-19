@@ -1,0 +1,35 @@
+{
+  "description": "A common value has 0 rows; every common value has at least 1.",
+  "input": {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [
+      {
+        "value": "7",
+        "rows": 60
+      },
+      {
+        "value": "42",
+        "rows": 0
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 400
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_rows"
+    }
+  }
+}

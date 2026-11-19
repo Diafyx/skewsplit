@@ -1,0 +1,107 @@
+{
+  "description": "Three candidates for one place (N = 4, R = 1200): 20 and 30 with 400 rows, and 10 with 300, a candidate because 300 * 4 is equal to R. Sorted by rows, then smallest ordinal first: 20, 30, 10, so only 20 is dominant. 10 and 30 get dominant_value_not_isolated, listed after dominant_value and by ordinal. Segment below 20: 300 + 100 * 19 / 99 = 319 rows; above: 481, which gets the extra range. Its target 240: x_hi = 31 (411, with value 30) is 171 away and x_lo = 30 (10) is 230 away. Skew score (2 * 411 * 4 * 1000 + 1200) / 2400 = 1370.",
+  "input": {
+    "column": "kind",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "10",
+        "rows": 300
+      },
+      {
+        "value": "20",
+        "rows": 400
+      },
+      {
+        "value": "30",
+        "rows": 400
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "100"
+      ],
+      "rows": 100
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "column": "kind",
+    "type": "int4",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1200,
+      "null": 0,
+      "non_null": 1200
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"kind\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "20"
+        },
+        "sql": "\"kind\" < 20",
+        "estimated_rows": 319
+      },
+      {
+        "kind": "value",
+        "value": "20",
+        "sql": "\"kind\" = 20",
+        "estimated_rows": 400
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "20"
+        },
+        "upper": {
+          "op": "<",
+          "value": "31"
+        },
+        "sql": "\"kind\" > 20 AND \"kind\" < 31",
+        "estimated_rows": 411
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "31"
+        },
+        "upper": null,
+        "sql": "\"kind\" >= 31",
+        "estimated_rows": 70
+      }
+    ],
+    "skew_score": 1.37,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "20",
+        "rows": 400
+      },
+      {
+        "code": "dominant_value_not_isolated",
+        "value": "10",
+        "rows": 300
+      },
+      {
+        "code": "dominant_value_not_isolated",
+        "value": "30",
+        "rows": 400
+      }
+    ],
+    "source": null
+  }
+}

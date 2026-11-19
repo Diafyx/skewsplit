@@ -1,0 +1,29 @@
+{
+  "description": "A timestamptz value must end in +00; this one has +01.",
+  "input": {
+    "column": "updated_at",
+    "type": "timestamptz",
+    "partitions": 5,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "1970-01-01 00:00:00+01",
+        "rows": 4000
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "2025-01-01 00:00:00+00",
+        "2025-07-01 12:00:00+00",
+        "2026-01-01 00:00:00+00"
+      ],
+      "rows": 6000
+    }
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_value"
+    }
+  }
+}

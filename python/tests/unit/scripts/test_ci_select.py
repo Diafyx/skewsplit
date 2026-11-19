@@ -35,6 +35,15 @@ def test_docs_only_pull_request_runs_lint_docs_and_pr_size() -> None:
     }
 
 
+def test_benchmark_changes_run_the_unit_tests_of_its_helpers() -> None:
+    assert running(select("pull_request", {"bench"}, set(), full=False)) == {
+        "lint",
+        "py-unit",
+        "coverage",
+        "pr-size",
+    }
+
+
 def test_repository_housekeeping_runs_lint_and_pr_size_only() -> None:
     assert running(select("pull_request", {"repo"}, set(), full=False)) == {"lint", "pr-size"}
 

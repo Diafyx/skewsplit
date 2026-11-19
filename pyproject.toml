@@ -46,7 +46,7 @@ dev = [{ include-group = "test" }, { include-group = "lint" }]
 [tool.ruff]
 target-version = "py39"
 line-length = 100
-src = ["python/src", "python/tests", "scripts"]
+src = ["python/src", "python/tests", "scripts", "bench"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -68,6 +68,9 @@ ignore = [
   "S603", # tests run git with fixed arguments in a temporary repository
   "S607", # git is found on PATH, as in every CI job
 ]
+"bench/**" = [
+  "T201", # the benchmark reports progress with print
+]
 "scripts/**" = [
   "S603", # subprocess runs git with fixed arguments, never a shell string
   "S607", # git is found on PATH, as in every CI job
@@ -87,14 +90,19 @@ python_version = "3.10"
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
-files = ["python/src", "python/tests", "scripts"]
-mypy_path = ["python/src", "scripts"]
+files = ["python/src", "python/tests", "scripts", "bench"]
+mypy_path = ["python/src", "scripts", "bench"]
+
+[[tool.mypy.overrides]]
+# PySpark is installed only for make bench, never in the project environment.
+module = ["pyspark", "pyspark.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.4"
 testpaths = ["python/tests"]
-# The repository scripts are tested as top-level modules.
-pythonpath = ["scripts"]
+# The repository scripts and the benchmark helpers are tested as top-level modules.
+pythonpath = ["scripts", "bench"]
 # A plain `pytest` runs the fast kinds only. The make targets for PostgreSQL
 # and Spark pass their own -m, which replaces this one.
 addopts = [

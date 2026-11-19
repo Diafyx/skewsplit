@@ -69,8 +69,8 @@ def split_requirements(pyproject: str) -> set[str]:
 UPDATES = parse_updates(TEXT)
 
 
-def test_both_ecosystems_are_configured() -> None:
-    assert [update.ecosystem for update in UPDATES] == ["github-actions", "uv"]
+def test_every_ecosystem_is_configured() -> None:
+    assert [update.ecosystem for update in UPDATES] == ["github-actions", "uv", "pip"]
 
 
 def test_an_unreadable_entry_is_an_error() -> None:

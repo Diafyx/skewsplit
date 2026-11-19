@@ -45,10 +45,13 @@ To run the same checks before each commit, install the hooks with
 
 The PostgreSQL integration tests, the Spark end-to-end tests and the benchmark
 need a database server or Spark with Java. They run in GitHub Actions, in
-service containers on GitHub's Linux runners, and are required checks, so
-nothing reaches `main` untested. `make py-integration` and `make spark-e2e`
-exist so that CI and local runs use the same commands, but locally they stop
-with a message unless you point them at a server you run yourself.
+service containers on GitHub's Linux runners. The tests are required checks, so
+nothing reaches `main` untested. The benchmark (`bench.yml`, see
+[bench/README.md](bench/README.md)) runs by hand and on pull requests that
+change `bench/`, and never gates. `make py-integration`, `make spark-e2e` and
+`make bench` exist so that CI and local runs use the same commands, but
+locally they stop with a message unless you point them at a server you run
+yourself.
 
 ## Testing standard
 

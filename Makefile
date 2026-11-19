@@ -3,8 +3,8 @@
 #   make check      what a PR runs, minus PostgreSQL and Spark (needs only uv)
 #   make check-all  every job that can run locally
 #
-# py-integration and spark-e2e need a PostgreSQL server or Spark with Java.
-# They run in GitHub Actions only; locally they stop with a message.
+# py-integration, spark-e2e and bench need a PostgreSQL server or Spark with
+# Java. They run in GitHub Actions only; locally they stop with a message.
 
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
@@ -30,7 +30,7 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance bench-core clean
+	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance bench-core bench clean
 
 check: lint py-unit coverage packaging docs
 
@@ -121,6 +121,37 @@ bench-core:
 	$(UV_RUN) pytest -m '' -p no:randomly --benchmark-enable \
 		--benchmark-json=$(REPORTS)/benchmark-core.json python/tests/unit/test_planner_benchmarks.py
 
+# The Spark benchmark (bench/README.md): build the skewed table, read it in each
+# way, and write $(REPORTS)/RESULTS.md. PySpark goes into its own environment
+# from bench/requirements.txt, and the PostgreSQL JDBC driver is downloaded
+# from Maven Central; both are checked by hash. Dependabot cannot see the
+# driver, so its version and hash are pinned here only.
+BENCH_ROWS ?= 15000000
+BENCH_PARTITIONS ?= 16
+BENCH_RUNS ?= 3
+BENCH_PYTHON := 3.14
+BENCH_VENV := .venv-bench
+PGJDBC_VERSION := 42.7.14
+PGJDBC_SHA256 := 73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c
+PGJDBC_JAR := $(BENCH_VENV)/postgresql-$(PGJDBC_VERSION).jar
+bench:
+	@if [[ -z "$${PGHOST:-}" || -z "$${JAVA_HOME:-}" ]]; then \
+		echo "bench needs PostgreSQL and Java (set PGHOST and JAVA_HOME). It runs in CI only."; \
+		exit 1; \
+	fi
+	[[ "$(BENCH_ROWS)$(BENCH_PARTITIONS)$(BENCH_RUNS)" =~ ^[0-9]+$$ ]]
+	mkdir -p $(REPORTS)
+	rm -rf $(BENCH_VENV)
+	uv venv --quiet --python $(BENCH_PYTHON) $(BENCH_VENV)
+	uv pip install --quiet --python $(BENCH_VENV) --require-hashes -r bench/requirements.txt
+	curl -fsSL -o $(PGJDBC_JAR) \
+		https://repo1.maven.org/maven2/org/postgresql/postgresql/$(PGJDBC_VERSION)/postgresql-$(PGJDBC_VERSION).jar
+	echo "$(PGJDBC_SHA256)  $(PGJDBC_JAR)" | sha256sum --check --strict
+	psql -v rows=$(BENCH_ROWS) -f bench/skewed_table.sql
+	$(BENCH_VENV)/bin/python bench/run.py --jdbc-jar $(PGJDBC_JAR) \
+		--partitions $(BENCH_PARTITIONS) --runs $(BENCH_RUNS) $(REPORTS)/bench.json
+	$(SCRIPT) bench/bench_report.py $(REPORTS)/bench.json $(REPORTS)/RESULTS.md
+
 # The oldest allowed versions of every direct dependency, in a separate
 # environment so uv.lock is never touched.
 py-lowest:
@@ -160,5 +191,5 @@ pr-hygiene:
 	$(SCRIPT) scripts/pr_hygiene.py
 
 clean:
-	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) \
+	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) \
 		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks

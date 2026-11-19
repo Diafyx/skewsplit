@@ -10,3 +10,4 @@ spec/fixtures/** linguist-generated=true
 **/snapshots/** linguist-generated=true
 **/__snapshots__/** linguist-generated=true
 python/CHANGELOG.md linguist-generated=true
+bench/RESULTS.md linguist-generated=true

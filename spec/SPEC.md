@@ -27,6 +27,7 @@ Contents:
 10. [Output](#10-output)
 11. [Versioning](#11-versioning)
 12. [PostgreSQL array text](#12-postgresql-array-text)
+13. [Statistics from PostgreSQL](#13-statistics-from-postgresql)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point.
@@ -411,6 +412,7 @@ fixture has exactly one.
 | `duplicate_value` | Two `mcv` entries have the same value |
 | `invalid_histogram` | Fewer than 2 bounds, bounds out of order, or a bound equal to a value in `mcv` |
 | `invalid_array` | Only when reading array text (section 12): the text is not in its format, or has a NULL element |
+| `invalid_statistics` | Only when converting statistics (section 13): a number is not in its form, a fraction is above 1, `reltuples` is empty, the common values and their frequencies do not pair up, or a special value is inside the histogram |
 
 **Example.** `"partitions": 0` gives `invalid_partitions`, and the value
 `"2026-02-30"` for a `date` column gives `invalid_value`.
@@ -528,3 +530,113 @@ element must be a value of the type: the error is `invalid_value` or
 | `{1, 2}` | `int4` | `invalid_array`: PostgreSQL never prints the space |
 
 The cases in `spec/fixtures/pg-array/` check this section.
+
+## 13. Statistics from PostgreSQL
+
+The PostgreSQL adapters build the input of section 1 from `pg_stats`, which
+`ANALYZE` keeps, without reading the table. This section fixes that
+conversion, so that every implementation builds the same input from the same
+statistics.
+
+**Conversion input.** One JSON object:
+
+| Field | Meaning |
+|-------|---------|
+| `column`, `type`, `scale`, `partitions` | As in section 1. They are copied to the result |
+| `reltuples` | A list of at least one `pg_class.reltuples`, as text: the table's own or, for inherited statistics (`pg_stats.inherited` true), those of the table and of every descendant that stores rows |
+| `null_frac` | `pg_stats.null_frac` as text |
+| `most_common_vals` | `pg_stats.most_common_vals` as array text (section 12), or `null` |
+| `most_common_freqs` | `pg_stats.most_common_freqs` as array text, or `null`. It is `null` exactly when `most_common_vals` is, and otherwise has one frequency per value |
+| `histogram_bounds` | `pg_stats.histogram_bounds` as array text, or `null` |
+| `modified_since_analyze` | Rows inserted, updated or deleted since the statistics were gathered, or `null` when that is not known. At least 0 |
+
+The texts are as PostgreSQL prints them with `DateStyle` set to ISO,
+`TimeZone` set to UTC and `extra_float_digits` set to 1 or more (its default).
+
+**Numbers.** `reltuples`, `null_frac` and each frequency is a decimal text of
+the form `(0|[1-9][0-9]*)(\.[0-9]+)?(e[+-][0-9]{2,3})?`, which is how PostgreSQL
+prints a non-negative `real`: for example `0.25`, `1e-05` or `1.5e+07`. Each
+stands for its exact decimal value, so `1.5e+07` is 15000000, and a fraction
+(`null_frac` or a frequency) is at most 1. The arithmetic below is exact, on
+rational numbers; `round(x)` is `floor(x + 1/2)`.
+
+**Row counts.**
+
+- `T` is the sum of `reltuples`, and `rows_estimate` is `round(T)`.
+- `null_rows` is `round(null_frac × T)`.
+- A common value with frequency `f` has `max(1, round(f × T))` rows, since
+  section 1 needs at least 1.
+- With `histogram_bounds`, the histogram holds
+  `H = max(0, rows_estimate - null_rows - the rows of all common values)` rows.
+  Without it, `H` is 0.
+
+Values are read as in section 12 and written in the output form of section 2.
+
+**Special values.** For `date`, `timestamp` and `timestamptz` these are
+`infinity` and `-infinity`; for `numeric`, `NaN`, `Infinity` and
+`-Infinity`. The integer types have none. They have no ordinal (section 2),
+so they are left out of the estimate, although the predicates still cover
+their rows (section 6):
+
+- A common value that is special is left out, with its rows.
+- In the histogram, special values sort first (`-infinity`) or last, so take
+  the `L` special bounds at the start and the `U` special bounds at the end.
+  Any other special bound is the error `invalid_statistics`. With `m` buckets
+  (the number of bounds minus 1, which must be at least 1), the buckets that
+  touch a special bound are left out. The bounds that remain are numbers `L`
+  to `m - U`, counting from 0, and they hold the rows of buckets `L + 1` to
+  `m - U` as section 3 counts them: `(m - U) × H / m - L × H / m`. If fewer
+  than 2 bounds remain, the histogram is `null`.
+- `unestimated_rows` is the rows of the special common values plus the
+  histogram rows that were left out.
+
+**Result.** The input of section 1, with the fields above, the common values
+that are not special in the order of `most_common_vals`, the remaining
+histogram, and this `source`:
+
+```json
+{
+  "statistics": "pg_stats",
+  "rows_estimate": 2000,
+  "unestimated_rows": 0,
+  "modified_since_analyze": 150,
+  "warnings": []
+}
+```
+
+The result must be a valid input of section 1. If it is not, the error is the
+one of section 9, for example `invalid_partitions`. Adapters may add fields
+to `source`, such as the table's name or when it was analyzed.
+
+`source.warnings` lists these warnings, in this order. Like the warnings of
+section 8, each has a `code`, its fields and a `message` whose wording is not
+part of the contract.
+
+| Code | Fields | When |
+|------|--------|------|
+| `stale_statistics` | `modified_rows`, `rows` | `modified_since_analyze × 10 > rows_estimate`: more than a tenth of the rows changed since the statistics were gathered. This is PostgreSQL's default for when autovacuum analyzes a table again (`autovacuum_analyze_scale_factor`). `rows` is `rows_estimate` |
+| `special_values_left_out` | `rows` | `unestimated_rows > 0`. `rows` is `unestimated_rows` |
+
+**Errors.** A field that is missing, unknown or of the wrong JSON type gives
+`invalid_input`. A number that is not in its form, a fraction above 1, an
+empty `reltuples`, common values and frequencies that do not pair up, a
+special value inside the histogram, or a negative `modified_since_analyze`
+give `invalid_statistics`. Array text gives the errors of section 12.
+
+**Example.** An `int4` column, with `partitions` 4, `reltuples` `["2000"]`,
+`null_frac` `0.05`, `most_common_vals` `{42,7}` with frequencies
+`{0.25,0.03}`, `histogram_bounds` `{1,250,500,750,1000}` and 150 rows
+modified. `T` is 2000, so `null_rows` is 100, 42 has 500 rows and 7 has 60.
+The histogram holds 2000 - 100 - 560 = 1340 rows. No warning applies: 150 × 10
+is not above 2000. The `source` is the one shown above.
+
+**Example.** A `timestamp` column with `reltuples` `["1.5e+07"]`, `null_frac`
+`0`, `most_common_vals` `{infinity}` with frequency `{0.2}`, and the histogram
+`{-infinity,"2026-01-01 00:00:00","2026-04-01 00:00:00","2026-07-01 00:00:00","2026-10-01 00:00:00"}`.
+`T` is 15000000, so `infinity` has 3000000 rows and is left out, and `H` is
+12000000. There are 4 buckets, with `L` 1 and `U` 0. The four dated bounds
+remain and hold 4 × 12000000 / 4 - 1 × 12000000 / 4 = 9000000 rows.
+`unestimated_rows` is 3000000 + 3000000 = 6000000, which gives the warning
+`special_values_left_out` with `rows` 6000000.
+
+The cases in `spec/fixtures/pg-stats/` check this section.

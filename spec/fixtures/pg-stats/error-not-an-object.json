@@ -1,0 +1,12 @@
+{
+  "description": "The statistics must be a JSON object.",
+  "input": [
+    "c"
+  ],
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

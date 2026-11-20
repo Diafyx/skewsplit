@@ -1,0 +1,22 @@
+{
+  "description": "Special values can only be the first or last bounds.",
+  "input": {
+    "column": "c",
+    "type": "date",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": "{2026-01-01,infinity,2026-02-01}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_statistics"
+    }
+  }
+}

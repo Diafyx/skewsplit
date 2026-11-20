@@ -1,0 +1,46 @@
+{
+  "description": "101 x 10 = 1010 is above rows_estimate 1000, so stale_statistics is given with modified_rows 101 and rows 1000.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": "{1,9}",
+    "modified_since_analyze": 101
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "1",
+          "9"
+        ],
+        "rows": 1000
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 1000,
+        "unestimated_rows": 0,
+        "modified_since_analyze": 101,
+        "warnings": [
+          {
+            "code": "stale_statistics",
+            "modified_rows": 101,
+            "rows": 1000
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "text is not a type of section 2.",
+  "input": {
+    "column": "c",
+    "type": "text",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": null,
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "unsupported_type"
+    }
+  }
+}

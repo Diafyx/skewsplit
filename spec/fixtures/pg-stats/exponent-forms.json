@@ -1,0 +1,50 @@
+{
+  "description": "Numbers in exponent form are exact decimals: T = 1.5e+07 = 15000000, null_frac 1e-05 gives round(150) = 150, 5 has round(0.0333 x T) = 499500 and 9 has round(2.5e-05 x T) = 375 rows. H = 15000000 - 150 - 499875 = 14499975.",
+  "input": {
+    "column": "c",
+    "type": "int8",
+    "partitions": 4,
+    "reltuples": [
+      "1.5e+07"
+    ],
+    "null_frac": "1e-05",
+    "most_common_vals": "{5,9}",
+    "most_common_freqs": "{0.0333,2.5e-05}",
+    "histogram_bounds": "{1,3,10}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "int8",
+      "partitions": 4,
+      "null_rows": 150,
+      "mcv": [
+        {
+          "value": "5",
+          "rows": 499500
+        },
+        {
+          "value": "9",
+          "rows": 375
+        }
+      ],
+      "histogram": {
+        "bounds": [
+          "1",
+          "3",
+          "10"
+        ],
+        "rows": 14499975
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 15000000,
+        "unestimated_rows": 0,
+        "modified_since_analyze": null,
+        "warnings": []
+      }
+    }
+  }
+}

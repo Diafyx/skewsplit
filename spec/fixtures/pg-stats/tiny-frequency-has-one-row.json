@@ -1,0 +1,39 @@
+{
+  "description": "A common value always has at least 1 row: round(1e-05 x 100) = round(0.001) = 0, so 3 gets max(1, 0) = 1. Without histogram_bounds there is no histogram.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "100"
+    ],
+    "null_frac": "0",
+    "most_common_vals": "{3}",
+    "most_common_freqs": "{1e-05}",
+    "histogram_bounds": null,
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [
+        {
+          "value": "3",
+          "rows": 1
+        }
+      ],
+      "histogram": null,
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 100,
+        "unestimated_rows": 0,
+        "modified_since_analyze": null,
+        "warnings": []
+      }
+    }
+  }
+}

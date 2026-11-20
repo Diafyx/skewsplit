@@ -8,7 +8,9 @@ that need no planner: row counts, the order of predicates, warnings and the
 skew score. Running the fixtures through a planner is each implementation's job.
 
 The array text fixtures in pg-array/ (spec section 12) have no plan; only
-their names and spec versions are checked here.
+their names and spec versions are checked here. For the statistics fixtures
+in pg-stats/ (spec section 13), it also checks the warnings in each result's
+source against its row counts.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from typing import Any
 
 DEFAULT_DIR = Path("spec/fixtures")
 # Fixtures of the other functions of the spec, in subdirectories.
-SUBDIRS = ("pg-array",)
+SUBDIRS = ("pg-array", "pg-stats")
 SPEC = Path("spec/SPEC.md")
 _VERSION = re.compile(r"^Spec version: \*\*(\d+\.\d+)\*\*$", re.MULTILINE)
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\.json")
@@ -34,6 +36,8 @@ WARNING_ORDER = (
     "nulls_exceed_share",
     "no_rows",
 )
+# Spec section 13: more than a tenth of the rows modified is stale.
+STALE_DIVISOR = 10
 
 
 def spec_version(spec_text: str) -> str:
@@ -174,10 +178,30 @@ def check_plan(inp: dict[str, Any], plan: dict[str, Any]) -> list[str]:
     return problems
 
 
-def check_fixture(path: Path, version: str, *, planner: bool = True) -> list[str]:
+def check_statistics(source: dict[str, Any]) -> list[str]:
+    """Check the warnings of a converted input's source (spec section 13)."""
+    rows, modified = source["rows_estimate"], source["modified_since_analyze"]
+    unestimated = source["unestimated_rows"]
+    expected: list[dict[str, Any]] = []
+    if modified is not None and modified * STALE_DIVISOR > rows:
+        expected.append({"code": "stale_statistics", "modified_rows": modified, "rows": rows})
+    if unestimated > 0:
+        expected.append({"code": "special_values_left_out", "rows": unestimated})
+    if source["warnings"] != expected:
+        return [
+            (
+                f"source warnings must be {expected}, from rows_estimate, unestimated_rows"
+                " and modified_since_analyze"
+            )
+        ]
+    return []
+
+
+def check_fixture(path: Path, version: str, *, kind: str = "plan") -> list[str]:
     """Return the problems with one fixture file, each prefixed with its name.
 
-    ``planner`` is false for the fixtures in SUBDIRS, which have no plan to check.
+    ``kind`` is ``plan`` for the planner fixtures, or the name of the
+    subdirectory in SUBDIRS that holds the fixture.
     """
     fixture = json.loads(path.read_text(encoding="utf-8"), parse_float=Decimal)
     expected = fixture["expected"]
@@ -185,8 +209,10 @@ def check_fixture(path: Path, version: str, *, planner: bool = True) -> list[str
     problems = check_name(path.name, is_error=is_error)
     if expected["spec_version"] != version:
         problems.append(f"spec_version must be {version}, the version in {SPEC.as_posix()}")
-    if planner and not is_error:
+    if kind == "plan" and not is_error:
         problems += check_plan(fixture["input"], expected)
+    if kind == "pg-stats" and not is_error:
+        problems += check_statistics(expected["input"]["source"])
     return [f"{path}: {problem}" for problem in problems]
 
 
@@ -195,14 +221,14 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     directory = Path(args[0]) if args else DEFAULT_DIR
     version = spec_version(SPEC.read_text(encoding="utf-8"))
-    files = [(path, True) for path in sorted(directory.iterdir()) if path.name not in SUBDIRS]
+    files = [(path, "plan") for path in sorted(directory.iterdir()) if path.name not in SUBDIRS]
     for name in SUBDIRS:
         if (directory / name).is_dir():
-            files += [(path, False) for path in sorted((directory / name).iterdir())]
+            files += [(path, name) for path in sorted((directory / name).iterdir())]
     problems = []
-    for path, planner in files:
+    for path, kind in files:
         if path.suffix == ".json":
-            problems += check_fixture(path, version, planner=planner)
+            problems += check_fixture(path, version, kind=kind)
         else:
             problems.append(f"{path}: only .json fixtures belong in {path.parent}")
     for problem in problems:

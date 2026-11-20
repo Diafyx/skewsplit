@@ -1,0 +1,39 @@
+{
+  "description": "Both bounds are special, so no bound remains: the histogram is null and its H = 10 rows are left out.",
+  "input": {
+    "column": "c",
+    "type": "date",
+    "partitions": 4,
+    "reltuples": [
+      "10"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": "{-infinity,infinity}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "date",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": null,
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 10,
+        "unestimated_rows": 10,
+        "modified_since_analyze": null,
+        "warnings": [
+          {
+            "code": "special_values_left_out",
+            "rows": 10
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "description": "For numeric, NaN, Infinity and -Infinity are special. NaN has round(0.1 x 1000) = 100 rows and is left out; 1.5 has 200 and is written 1.50. H = 1000 - 300 = 700 over m = 4 buckets, L = 1, U = 1: the bounds 0.01, 5 and 9.99 hold 3 x 700 / 4 - 1 x 700 / 4 = 525 - 175 = 350 rows. unestimated_rows = 100 + 700 - 350 = 450.",
+  "input": {
+    "column": "c",
+    "type": "numeric",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": "{NaN,1.5}",
+    "most_common_freqs": "{0.1,0.2}",
+    "histogram_bounds": "{-Infinity,0.01,5,9.99,Infinity}",
+    "modified_since_analyze": null,
+    "scale": 2
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "numeric",
+      "scale": 2,
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [
+        {
+          "value": "1.50",
+          "rows": 200
+        }
+      ],
+      "histogram": {
+        "bounds": [
+          "0.01",
+          "5.00",
+          "9.99"
+        ],
+        "rows": 350
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 1000,
+        "unestimated_rows": 450,
+        "modified_since_analyze": null,
+        "warnings": [
+          {
+            "code": "special_values_left_out",
+            "rows": 450
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "most_common_vals is array text or null, not a JSON array.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": [
+      "1"
+    ],
+    "most_common_freqs": "{0.5}",
+    "histogram_bounds": null,
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

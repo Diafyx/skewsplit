@@ -1,0 +1,42 @@
+{
+  "description": "reltuples of every relation are added exactly: T = 1000 + 2000.5 + 0 = 3000.5, so rows_estimate = round(3000.5) = 3001. null_rows = round(0.25 x 3000.5) = round(750.125) = 750, and the histogram holds 3001 - 750 - 0 = 2251 rows.",
+  "input": {
+    "column": "c",
+    "type": "date",
+    "partitions": 4,
+    "reltuples": [
+      "1000",
+      "2000.5",
+      "0"
+    ],
+    "null_frac": "0.25",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": "{2026-01-01,2026-06-30}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "date",
+      "partitions": 4,
+      "null_rows": 750,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "2026-01-01",
+          "2026-06-30"
+        ],
+        "rows": 2251
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 3001,
+        "unestimated_rows": 0,
+        "modified_since_analyze": null,
+        "warnings": []
+      }
+    }
+  }
+}

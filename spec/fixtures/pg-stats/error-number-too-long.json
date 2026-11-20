@@ -1,0 +1,22 @@
+{
+  "description": "A number of more than 40 characters is not one PostgreSQL prints for a real.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0.11111111111111111111111111111111111111111111111111",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": null,
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_statistics"
+    }
+  }
+}

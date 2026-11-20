@@ -7,6 +7,8 @@
 | `fixtures/*.json` | The golden fixtures, one input and its expected output per file |
 | [`schema/pg-array.schema.json`](schema/pg-array.schema.json) | JSON Schema of one array text fixture |
 | `fixtures/pg-array/*.json` | Cases for reading PostgreSQL array text (spec section 12) |
+| [`schema/pg-stats.schema.json`](schema/pg-stats.schema.json) | JSON Schema of one statistics fixture |
+| `fixtures/pg-stats/*.json` | Cases for converting PostgreSQL statistics into the input (spec section 13) |
 
 ## Fixture format
 
@@ -35,6 +37,15 @@ the `values` in order or an `error` code. They follow the same rules as the
 planner fixtures: messages are left out, error fixtures are named `error-*`,
 and each has exactly one problem.
 
+### Statistics fixtures
+
+The files in `fixtures/pg-stats/` check spec section 13. Each `input` is a
+conversion input: one `pg_stats` row as text, with `reltuples` and the rows
+modified since the last analyze. `expected` is `spec_version` with either the
+planner `input` that the conversion builds, or an `error` code. The messages
+of the warnings in the input's `source` are left out, like all messages, and
+the same rules apply as for the other fixtures.
+
 ## Checks
 
 `make check-fixtures` validates every fixture against the schema, then runs
@@ -42,7 +53,8 @@ and each has exactly one problem.
 counts add up and match the input, the predicates fit together in order,
 each warning is given exactly when the spec says, and the skew score follows
 from the largest predicate. For the array text fixtures it checks only the
-names and the spec version. It does not plan, so a wrong split point is caught
+names and the spec version; for the statistics fixtures, also the warnings in
+each result's `source`. It does not plan, so a wrong split point is caught
 by review of the description and by the implementations' tests: for Python,
 `make conformance` runs every fixture against the core.
 

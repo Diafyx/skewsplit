@@ -1,0 +1,22 @@
+{
+  "description": "modified_since_analyze is a JSON integer or null.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": null,
+    "modified_since_analyze": "12"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

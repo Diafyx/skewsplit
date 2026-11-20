@@ -1,0 +1,47 @@
+{
+  "description": "Section 13's second example. T = 15000000; infinity has round(0.2 x T) = 3000000 rows and is left out. H = 15000000 - 0 - 3000000 = 12000000 over m = 4 buckets with L = 1, U = 0: the four dated bounds hold 4 x 12000000 / 4 - 1 x 12000000 / 4 = 9000000 rows. unestimated_rows = 3000000 + 3000000 = 6000000.",
+  "input": {
+    "column": "t",
+    "type": "timestamp",
+    "partitions": 4,
+    "reltuples": [
+      "1.5e+07"
+    ],
+    "null_frac": "0",
+    "most_common_vals": "{infinity}",
+    "most_common_freqs": "{0.2}",
+    "histogram_bounds": "{-infinity,\"2026-01-01 00:00:00\",\"2026-04-01 00:00:00\",\"2026-07-01 00:00:00\",\"2026-10-01 00:00:00\"}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "t",
+      "type": "timestamp",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "2026-01-01 00:00:00",
+          "2026-04-01 00:00:00",
+          "2026-07-01 00:00:00",
+          "2026-10-01 00:00:00"
+        ],
+        "rows": 9000000
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 15000000,
+        "unestimated_rows": 6000000,
+        "modified_since_analyze": null,
+        "warnings": [
+          {
+            "code": "special_values_left_out",
+            "rows": 6000000
+          }
+        ]
+      }
+    }
+  }
+}

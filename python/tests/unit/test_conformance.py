@@ -1,4 +1,4 @@
-"""Run every golden fixture in spec/fixtures/ and spec/fixtures/pg-array/ against the core.
+"""Run every golden fixture in spec/fixtures/ and its subdirectories against the core.
 
 The output must equal the fixture's ``expected`` object exactly, apart from
 the ``message`` of warnings and errors, whose wording is not part of the
@@ -16,6 +16,7 @@ import pytest
 from skewsplit.core.codecs import codec_for
 from skewsplit.core.errors import SpecError
 from skewsplit.core.pgarray import parse_values
+from skewsplit.core.pgstats import from_pg_stats
 from skewsplit.core.plan import SPEC_VERSION, error_json
 from skewsplit.core.planner import plan
 
@@ -24,6 +25,7 @@ pytestmark = pytest.mark.conformance
 SPEC = Path(__file__).parents[3] / "spec"
 FIXTURES = sorted((SPEC / "fixtures").glob("*.json"))
 PG_ARRAY = sorted((SPEC / "fixtures" / "pg-array").glob("*.json"))
+PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))
 
 
 def run(data: object) -> dict[str, Any]:
@@ -47,9 +49,24 @@ def read_array(data: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
+def convert(data: object) -> dict[str, Any]:
+    """Return the result of converting statistics (spec section 13): an input or an error."""
+    try:
+        out: object = {"spec_version": SPEC_VERSION, "input": from_pg_stats(data)}
+    except SpecError as error:
+        out = error_json(error)
+    decoded: dict[str, Any] = json.loads(json.dumps(out, allow_nan=False))
+    return decoded
+
+
 def without_messages(out: dict[str, Any]) -> dict[str, Any]:
     """Remove the messages, after checking that each one is a non-empty string."""
-    entries = out["warnings"] if "warnings" in out else [out["error"]] if "error" in out else []
+    if "input" in out:
+        entries = out["input"]["source"]["warnings"]
+    elif "warnings" in out:
+        entries = out["warnings"]
+    else:
+        entries = [out["error"]] if "error" in out else []
     for entry in entries:
         message = entry.pop("message")
         assert isinstance(message, str)
@@ -87,3 +104,27 @@ def test_array_text_fixture(path: Path) -> None:
     fixture = json.loads(path.read_text(encoding="utf-8"))
     actual, expected = without_messages(read_array(fixture["input"])), fixture["expected"]
     assert actual == expected, fixture["description"]
+
+
+def test_there_are_statistics_fixtures_for_every_error_code() -> None:
+    schema = json.loads((SPEC / "schema" / "pg-stats.schema.json").read_text(encoding="utf-8"))
+    codes = {
+        json.loads(path.read_text(encoding="utf-8"))["expected"]["error"]["code"]
+        for path in PG_STATS
+        if path.name.startswith("error-")
+    }
+    assert codes == set(
+        schema["$defs"]["error"]["properties"]["error"]["properties"]["code"]["enum"]
+    )
+    assert len(PG_STATS) >= 40
+
+
+@pytest.mark.parametrize("path", PG_STATS, ids=[path.stem for path in PG_STATS])
+def test_statistics_fixture(path: Path) -> None:
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    actual, expected = without_messages(convert(fixture["input"])), fixture["expected"]
+    assert actual == expected, fixture["description"]
+    assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
+    if "input" in expected:
+        # The result is a planner input: it plans, and the plan carries its source.
+        assert run(expected["input"])["source"] == expected["input"]["source"]

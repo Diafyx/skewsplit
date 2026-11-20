@@ -1,0 +1,22 @@
+{
+  "description": "40000 is outside int2.",
+  "input": {
+    "column": "c",
+    "type": "int2",
+    "partitions": 4,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": "{1,40000}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "value_out_of_range"
+    }
+  }
+}

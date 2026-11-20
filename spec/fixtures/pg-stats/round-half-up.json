@@ -1,0 +1,46 @@
+{
+  "description": "round(x) is floor(x + 1/2), so halves round up: T = 5, null_rows = round(0.1 x 5) = round(0.5) = 1, and 4 has round(0.3 x 5) = round(1.5) = 2 rows. H = 5 - 1 - 2 = 2.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "5"
+    ],
+    "null_frac": "0.1",
+    "most_common_vals": "{4}",
+    "most_common_freqs": "{0.3}",
+    "histogram_bounds": "{1,2,3}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 1,
+      "mcv": [
+        {
+          "value": "4",
+          "rows": 2
+        }
+      ],
+      "histogram": {
+        "bounds": [
+          "1",
+          "2",
+          "3"
+        ],
+        "rows": 2
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 5,
+        "unestimated_rows": 0,
+        "modified_since_analyze": null,
+        "warnings": []
+      }
+    }
+  }
+}

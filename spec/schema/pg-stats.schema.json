@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Diafyx/skewsplit/blob/main/spec/schema/pg-stats.schema.json",
+  "title": "skewsplit PostgreSQL statistics fixture",
+  "description": "One pg_stats row and its reltuples, and the planner input or error every implementation must build from them, as defined in spec/SPEC.md section 13. Warning and error messages are left out: their wording is not part of the contract.",
+  "type": "object",
+  "required": ["description", "input", "expected"],
+  "properties": {
+    "description": {
+      "description": "How the expected result follows from the spec, with the arithmetic.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": true,
+    "expected": true
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "input": {"$ref": "#/$defs/statistics"},
+        "expected": {"$ref": "#/$defs/converted"}
+      }
+    },
+    {
+      "description": "An error fixture. Its input is invalid on purpose, so it may be any JSON value.",
+      "properties": {
+        "expected": {"$ref": "#/$defs/error"}
+      }
+    }
+  ],
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "type": {"enum": ["int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz"]},
+    "array_text": {"type": ["string", "null"]},
+    "spec_version": {"const": "1.0"},
+    "statistics": {
+      "description": "The conversion input of spec section 13.",
+      "type": "object",
+      "required": [
+        "column",
+        "type",
+        "partitions",
+        "reltuples",
+        "null_frac",
+        "most_common_vals",
+        "most_common_freqs",
+        "histogram_bounds",
+        "modified_since_analyze"
+      ],
+      "properties": {
+        "column": {"type": "string"},
+        "type": {"$ref": "#/$defs/type"},
+        "scale": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "partitions": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "reltuples": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "null_frac": {"type": "string"},
+        "most_common_vals": {"$ref": "#/$defs/array_text"},
+        "most_common_freqs": {"$ref": "#/$defs/array_text"},
+        "histogram_bounds": {"$ref": "#/$defs/array_text"},
+        "modified_since_analyze": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]}
+      },
+      "additionalProperties": false
+    },
+    "converted": {
+      "type": "object",
+      "required": ["spec_version", "input"],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "input": {
+          "description": "A planner input of spec section 1. The conformance tests check that it plans.",
+          "type": "object",
+          "required": ["column", "type", "partitions", "null_rows", "mcv", "histogram", "source"],
+          "properties": {"source": {"$ref": "#/$defs/source"}}
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "statistics",
+        "rows_estimate",
+        "unestimated_rows",
+        "modified_since_analyze",
+        "warnings"
+      ],
+      "properties": {
+        "statistics": {"const": "pg_stats"},
+        "rows_estimate": {"$ref": "#/$defs/count"},
+        "unestimated_rows": {"$ref": "#/$defs/count"},
+        "modified_since_analyze": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]},
+        "warnings": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["code", "modified_rows", "rows"],
+                "properties": {
+                  "code": {"const": "stale_statistics"},
+                  "modified_rows": {"$ref": "#/$defs/count"},
+                  "rows": {"$ref": "#/$defs/count"}
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "required": ["code", "rows"],
+                "properties": {
+                  "code": {"const": "special_values_left_out"},
+                  "rows": {"$ref": "#/$defs/count"}
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["spec_version", "error"],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "error": {
+          "type": "object",
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_input",
+                "invalid_statistics",
+                "invalid_array",
+                "invalid_value",
+                "value_out_of_range",
+                "unsupported_type",
+                "invalid_partitions",
+                "invalid_column",
+                "invalid_rows",
+                "duplicate_value",
+                "invalid_histogram"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

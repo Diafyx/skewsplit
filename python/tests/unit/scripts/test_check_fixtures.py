@@ -8,7 +8,14 @@ from typing import Any, Callable
 
 import pytest
 
-from check_fixtures import check_fixture, check_name, check_plan, main, spec_version
+from check_fixtures import (
+    check_fixture,
+    check_name,
+    check_plan,
+    check_statistics,
+    main,
+    spec_version,
+)
 
 REPO = Path(__file__).parents[4]
 FIXTURES = REPO / "spec" / "fixtures"
@@ -228,3 +235,73 @@ def test_main_passes_on_the_repository(
     monkeypatch.chdir(REPO)
     assert main([]) == 0
     assert "consistent with spec version 1.0" in capsys.readouterr().out
+
+
+STALE = {"code": "stale_statistics", "modified_rows": 101, "rows": 1000}
+SPECIAL = {"code": "special_values_left_out", "rows": 5}
+
+
+def statistics_source(modified: int | None, unestimated: int, warnings: list[Fixture]) -> Fixture:
+    return {
+        "statistics": "pg_stats",
+        "rows_estimate": 1000,
+        "unestimated_rows": unestimated,
+        "modified_since_analyze": modified,
+        "warnings": warnings,
+    }
+
+
+@pytest.mark.parametrize(
+    ("modified", "unestimated", "warnings"),
+    [
+        (None, 0, []),
+        (100, 0, []),
+        (101, 0, [STALE]),
+        (None, 5, [SPECIAL]),
+        (101, 5, [STALE, SPECIAL]),
+    ],
+)
+def test_check_statistics_accepts_the_warnings_section_13_gives(
+    modified: int | None, unestimated: int, warnings: list[Fixture]
+) -> None:
+    assert check_statistics(statistics_source(modified, unestimated, warnings)) == []
+
+
+@pytest.mark.parametrize(
+    ("modified", "unestimated", "warnings"),
+    [
+        (100, 0, [{**STALE, "modified_rows": 100}]),
+        (101, 0, []),
+        (None, 0, [SPECIAL]),
+        (None, 5, []),
+        (101, 5, [SPECIAL, STALE]),
+        (101, 0, [{**STALE, "rows": 999}]),
+    ],
+)
+def test_check_statistics_reports_wrong_warnings(
+    modified: int | None, unestimated: int, warnings: list[Fixture]
+) -> None:
+    [problem] = check_statistics(statistics_source(modified, unestimated, warnings))
+    assert problem.startswith("source warnings must be [")
+
+
+def test_main_checks_the_statistics_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pg_stats = tmp_path / "pg-stats"
+    pg_stats.mkdir()
+    fixture = {
+        "description": "d",
+        "input": {},
+        "expected": {
+            "spec_version": "1.0",
+            "input": {"source": statistics_source(101, 0, [])},
+        },
+    }
+    (pg_stats / "stale.json").write_text(json.dumps(fixture), encoding="utf-8")
+    fixture["expected"] = {"spec_version": "1.0", "error": {"code": "invalid_statistics"}}
+    (pg_stats / "error-statistics.json").write_text(json.dumps(fixture), encoding="utf-8")
+    monkeypatch.chdir(REPO)
+    assert main([str(tmp_path)]) == 1
+    [problem] = capsys.readouterr().err.splitlines()
+    assert problem.startswith(f"{pg_stats / 'stale.json'}: source warnings must be [")

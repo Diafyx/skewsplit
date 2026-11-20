@@ -1,0 +1,49 @@
+{
+  "description": "Rounded counts can add up to more than rows_estimate: 5 + 3 + 3 = 11 > 10, so H = max(0, 10 - 11) = 0. The bounds are kept with 0 rows.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "reltuples": [
+      "10"
+    ],
+    "null_frac": "0.5",
+    "most_common_vals": "{1,2}",
+    "most_common_freqs": "{0.3,0.3}",
+    "histogram_bounds": "{3,4}",
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 5,
+      "mcv": [
+        {
+          "value": "1",
+          "rows": 3
+        },
+        {
+          "value": "2",
+          "rows": 3
+        }
+      ],
+      "histogram": {
+        "bounds": [
+          "3",
+          "4"
+        ],
+        "rows": 0
+      },
+      "source": {
+        "statistics": "pg_stats",
+        "rows_estimate": 10,
+        "unestimated_rows": 0,
+        "modified_since_analyze": null,
+        "warnings": []
+      }
+    }
+  }
+}

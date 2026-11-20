@@ -1,0 +1,22 @@
+{
+  "description": "partitions must be 1 to 10000 (section 1).",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 0,
+    "reltuples": [
+      "1000"
+    ],
+    "null_frac": "0",
+    "most_common_vals": null,
+    "most_common_freqs": null,
+    "histogram_bounds": null,
+    "modified_since_analyze": null
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_partitions"
+    }
+  }
+}

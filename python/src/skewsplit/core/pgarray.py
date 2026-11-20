@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from skewsplit.core.errors import SpecError
 
@@ -56,6 +56,18 @@ def parse_array(text: str) -> list[str | None]:
     return items
 
 
+def parse_elements(text: str) -> list[str]:
+    """Split array text from pg_stats into its elements, which are never NULL.
+
+    Raises:
+        SpecError: ``invalid_array`` for bad array text or a NULL element.
+    """
+    items = parse_array(text)
+    if None in items:
+        raise _invalid(text, "pg_stats arrays never hold NULL")
+    return cast("list[str]", items)
+
+
 def parse_values(text: str, codec: Codec) -> list[str]:
     """Read array text as values of the codec's type, in their output form.
 
@@ -63,12 +75,7 @@ def parse_values(text: str, codec: Codec) -> list[str]:
         SpecError: ``invalid_array`` for bad array text or a NULL element,
             or the codec's ``invalid_value`` or ``value_out_of_range``.
     """
-    values = []
-    for item in parse_array(text):
-        if item is None:
-            raise _invalid(text, "pg_stats arrays never hold NULL")
-        values.append(codec.text(codec.parse(item)))
-    return values
+    return [codec.text(codec.parse(item)) for item in parse_elements(text)]
 
 
 def _element(text: str, pos: int) -> tuple[str | None, int]:

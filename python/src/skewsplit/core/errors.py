@@ -1,4 +1,4 @@
-"""The error the core raises for invalid input (spec sections 9 and 12)."""
+"""The error the core raises for invalid input (spec sections 9, 12 and 13)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ ErrorCode = Literal[
     "duplicate_value",
     "invalid_histogram",
     "invalid_array",
+    "invalid_statistics",
 ]
 
 

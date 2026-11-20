@@ -1,0 +1,13 @@
+{
+  "description": "A quoted NULL is the four-letter text NULL, which is not an int4.",
+  "input": {
+    "text": "{\"NULL\"}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_value"
+    }
+  }
+}

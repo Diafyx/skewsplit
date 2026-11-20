@@ -1,0 +1,14 @@
+{
+  "description": "Quoting an element that needs none changes nothing.",
+  "input": {
+    "text": "{\"7\",8}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "7",
+      "8"
+    ]
+  }
+}

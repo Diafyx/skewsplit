@@ -1,0 +1,13 @@
+{
+  "description": "32768 is above the int2 maximum.",
+  "input": {
+    "text": "{32768}",
+    "type": "int2"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "value_out_of_range"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "description": "Unquoted integers, in order.",
+  "input": {
+    "text": "{1,2,3}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "1",
+      "2",
+      "3"
+    ]
+  }
+}

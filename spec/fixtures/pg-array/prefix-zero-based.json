@@ -1,0 +1,15 @@
+{
+  "description": "[0:2]= says the lower bound is 0; the three elements match it.",
+  "input": {
+    "text": "[0:2]={1,2,3}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "1",
+      "2",
+      "3"
+    ]
+  }
+}

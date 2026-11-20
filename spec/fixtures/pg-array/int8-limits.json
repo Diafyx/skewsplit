@@ -1,0 +1,14 @@
+{
+  "description": "The int8 limits are read as they are.",
+  "input": {
+    "text": "{-9223372036854775808,9223372036854775807}",
+    "type": "int8"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "-9223372036854775808",
+      "9223372036854775807"
+    ]
+  }
+}

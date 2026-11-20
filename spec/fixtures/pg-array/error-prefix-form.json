@@ -1,0 +1,13 @@
+{
+  "description": "L and U have no leading zeros.",
+  "input": {
+    "text": "[01:1]={1}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

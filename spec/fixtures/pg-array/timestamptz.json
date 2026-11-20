@@ -1,0 +1,13 @@
+{
+  "description": "A timestamptz element, quoted because of the space.",
+  "input": {
+    "text": "{\"2026-11-18 15:30:00.25+00\"}",
+    "type": "timestamptz"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "2026-11-18 15:30:00.25+00"
+    ]
+  }
+}

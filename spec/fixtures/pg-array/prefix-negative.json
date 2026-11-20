@@ -1,0 +1,14 @@
+{
+  "description": "[-1:0]= gives two elements.",
+  "input": {
+    "text": "[-1:0]={5,6}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.0",
+    "values": [
+      "5",
+      "6"
+    ]
+  }
+}

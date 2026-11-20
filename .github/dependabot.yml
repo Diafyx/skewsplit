@@ -45,6 +45,7 @@ updates:
     ignore:
       - dependency-name: "coverage"
       - dependency-name: "hypothesis"
+      - dependency-name: "psycopg"
       - dependency-name: "pytest"
       - dependency-name: "pytest-benchmark"
       - dependency-name: "pytest-randomly"

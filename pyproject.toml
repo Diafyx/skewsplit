@@ -17,6 +17,11 @@ test = [
   "hypothesis>=6.170; python_version>='3.11'",
   "hypothesis>=6.168,<6.169; python_version=='3.10'",
   "hypothesis>=6.141,<6.142; python_version<'3.10'",
+  # The integration tests need a PostgreSQL driver, and the unit tests of the
+  # adapter use its error classes. 3.3.6 is the first with Python 3.15 wheels;
+  # psycopg 3.3 needs Python 3.10.
+  "psycopg[binary]>=3.3.6; python_version>='3.10'",
+  "psycopg[binary]>=3.2.13,<3.3; python_version<'3.10'",
   "pytest>=9.2; python_version>='3.10'",
   "pytest>=8.4.2,<9; python_version<'3.10'",
   "pytest-benchmark>=5.3.1; python_version>='3.10'",
@@ -91,7 +96,10 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 files = ["python/src", "python/tests", "scripts", "bench"]
-mypy_path = ["python/src", "scripts", "bench"]
+mypy_path = ["python/src", "scripts", "bench", "python/tests"]
+# Name test modules by their folders (unit.test_x, integration.conftest), so
+# files with the same name in different folders do not clash.
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 # PySpark is installed only for make bench, never in the project environment.

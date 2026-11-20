@@ -27,6 +27,7 @@ GROUPS = SHARED | PYTHON | {"rust", "bench", "docs", "repo"}
 JOBS: dict[str, frozenset[str]] = {
     "py-unit": PYTHON | {"bench"},
     "py-lowest": PYTHON,
+    "py-integration": PYTHON,
     "coverage": PYTHON | {"bench"},
     "packaging": PYTHON,
     "docs": PYTHON | {"docs"},

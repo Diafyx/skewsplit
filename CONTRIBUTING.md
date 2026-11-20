@@ -53,6 +53,12 @@ change `bench/`, and never gates. `make py-integration`, `make spark-e2e` and
 locally they stop with a message unless you point them at a server you run
 yourself.
 
+`make py-integration` reads the server from `SKEWSPLIT_PG_DSN`, a libpq
+connection string for a role that is a superuser, because the tests create a
+role. CI runs them against every supported PostgreSQL version. They create two
+schemas and a role with random names, and drop exactly those when they finish.
+Use a throwaway database all the same.
+
 ## Testing standard
 
 | Gate | Threshold |

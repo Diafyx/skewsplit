@@ -14,13 +14,14 @@ ALL_JOBS = {
     "pr-size",
     "py-unit",
     "py-lowest",
+    "py-integration",
     "coverage",
     "packaging",
     "docs",
     "conformance",
     "core-bench",
 }
-PYTHON_JOBS = {"py-unit", "py-lowest", "coverage", "packaging", "conformance"}
+PYTHON_JOBS = {"py-unit", "py-lowest", "py-integration", "coverage", "packaging", "conformance"}
 
 
 def running(selected: dict[str, bool]) -> set[str]:
@@ -96,7 +97,8 @@ def test_main_appends_to_github_output(
     assert main(["--event", "pull_request", "--groups", '["repo"]']) == 0
     written = output.read_text(encoding="utf-8")
     assert written.startswith("earlier=1\nlint=true\n")
-    assert "allowed-skips=py-unit,py-lowest,coverage,packaging,docs,conformance\n" in written
+    skips = "py-unit,py-lowest,py-integration,coverage,packaging,docs,conformance"
+    assert f"allowed-skips={skips}\n" in written
     assert capsys.readouterr().out == written.removeprefix("earlier=1\n")
 
 

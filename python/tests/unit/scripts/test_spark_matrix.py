@@ -68,6 +68,20 @@ def test_the_lines_and_pythons_match_the_supported_versions() -> None:
         assert set(javas) <= {"17", "21"}
 
 
+def test_the_readme_lists_the_python_range_of_each_line() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    row = re.search(r"^\| Python for Spark \| ([^|]+) \|", readme, re.MULTILINE)
+    assert row is not None
+    ranges: dict[tuple[str, str], list[str]] = {}
+    for spark, (oldest, newest, _) in LINES.items():
+        ranges.setdefault((oldest, newest), []).append(spark)
+    expected = "; ".join(
+        f"{oldest} to {newest} for {' and '.join(lines)}"
+        for (oldest, newest), lines in ranges.items()
+    ).replace(" for ", " for Spark ", 1)
+    assert row.group(1).strip() == expected
+
+
 def test_each_line_has_its_pinned_pyspark() -> None:
     folders = sorted((ROOT / "python" / "tests" / "spark").glob("pyspark-*/requirements.txt"))
     assert [path.parent.name.removeprefix("pyspark-") for path in folders] == list(LINES)

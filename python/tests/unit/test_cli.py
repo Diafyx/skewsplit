@@ -250,6 +250,21 @@ def test_plan_prints_json(capsys: pytest.CaptureFixture[str], fake: Fake) -> Non
     assert fake.calls[-1] == ("plan", TABLE, "customer_id", 4)
 
 
+@pytest.mark.parametrize("form", ["pyspark", "scala"])
+def test_plan_prints_code_that_reads_the_table(
+    capsys: pytest.CaptureFixture[str], fake: Fake, form: str
+) -> None:
+    code, out, _ = run(capsys, *PLAN_ARGS, "--format", form)
+    expected = PLAN.to_pyspark() if form == "pyspark" else PLAN.to_scala()
+    assert (code, out) == (cli.OK, expected + "\n")
+    assert fake.calls[-1] == ("plan", TABLE, "customer_id", 4)
+
+
+def test_verify_has_no_code_formats(capsys: pytest.CaptureFixture[str]) -> None:
+    err = usage_error(capsys, "verify", "--table", TABLE, "--plan", "-", "--format", "pyspark")
+    assert "invalid choice: 'pyspark'" in err
+
+
 @pytest.mark.parametrize(
     ("error", "message"),
     [

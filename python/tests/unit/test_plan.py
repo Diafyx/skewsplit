@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
+from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
 from skewsplit.core.planner import plan
+
+if TYPE_CHECKING:
+    from skewsplit.core.plan import Plan
 
 SECTION_1 = {
     "column": "customer_id",
@@ -126,3 +132,187 @@ def test_to_json_refuses_a_source_json_cannot_hold(source: object, error: type[E
     result = replace(plan(SECTION_1), source=source)
     with pytest.raises(error):
         result.to_json()
+
+
+PYSPARK_SECTION_1 = """\
+# skewsplit: 4 of 4 partitions plus one for NULL, with an estimated skew score of 1.887
+# spark, url, table and properties are yours: the session, the JDBC URL, the table,
+# and the connection properties such as the user and password.
+predicates = [
+    '"customer_id" IS NULL',
+    '"customer_id" < 42',
+    '"customer_id" = 42',
+    '"customer_id" > 42 AND "customer_id" < 520',
+    '"customer_id" >= 520',
+]
+df = spark.read.jdbc(url, table, predicates=predicates, properties=properties)"""
+
+SCALA_SECTION_1 = """\
+// skewsplit: 4 of 4 partitions plus one for NULL, with an estimated skew score of 1.887
+// spark, url, table and properties are yours: the session, the JDBC URL, the table,
+// and the connection properties such as the user and password.
+val predicates = Array(
+  "\\"customer_id\\" IS NULL",
+  "\\"customer_id\\" < 42",
+  "\\"customer_id\\" = 42",
+  "\\"customer_id\\" > 42 AND \\"customer_id\\" < 520",
+  "\\"customer_id\\" >= 520"
+)
+val df = spark.read.jdbc(url, table, predicates, properties)"""
+
+# Column names that a careless string literal gets wrong.
+AWKWARD = [
+    'say "hi"',
+    "it's",
+    "'''",
+    "back\\slash\\",
+    "\\u0022 is a quote in Scala 2.12",
+    "\\\\u0022",
+    "new\nline",
+    "carriage\rreturn",
+    "tab\tand\bbackspace\fform feed",
+    "\x01\x1f\x7f\x85 controls",
+    "\u2028\u2029 separators",
+    "ü, 😀 and \U000e0001",
+    "\ud800 lone surrogate",
+    "$dollar ${x} %s {}",
+]
+
+
+def awkward_plan(column: str) -> Plan:
+    return plan({**SECTION_1, "column": column})
+
+
+def test_the_snippets_of_section_1() -> None:
+    assert plan(SECTION_1).to_pyspark() == PYSPARK_SECTION_1
+    assert plan(SECTION_1).to_scala() == SCALA_SECTION_1
+
+
+def test_a_snippet_without_rows() -> None:
+    empty = {"column": "c", "type": "int4", "partitions": 3, "null_rows": 0, "mcv": []}
+    result = plan({**empty, "histogram": None})
+    summary = "skewsplit: 1 of 3 partitions plus one for NULL, with no skew score"
+    assert result.to_pyspark().split("\n")[0] == f"# {summary}"
+    assert result.to_scala().split("\n")[0] == f"// {summary}"
+
+
+@pytest.mark.parametrize("column", AWKWARD)
+def test_the_comments_hold_nothing_from_the_column(column: str) -> None:
+    result = awkward_plan(column)
+    # Only the predicates differ, so a line break in a name cannot end a comment.
+    for snippet, reference in [
+        (result.to_pyspark(), PYSPARK_SECTION_1),
+        (result.to_scala(), SCALA_SECTION_1),
+    ]:
+        assert snippet.split("\n")[:4] == reference.split("\n")[:4]
+        assert snippet.split("\n")[-2:] == reference.split("\n")[-2:]
+
+
+class FakeReader:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def jdbc(self, url: str, table: str, *, predicates: list[str], properties: object) -> str:
+        self.calls.append((url, table, predicates, properties))
+        return "a data frame"
+
+
+@pytest.mark.parametrize("column", AWKWARD)
+def test_the_pyspark_snippet_runs_and_reads_with_the_predicates(column: str) -> None:
+    result = awkward_plan(column)
+    reader = FakeReader()
+    spark = SimpleNamespace(read=reader)
+    names: dict[str, object] = {"spark": spark, "url": "u", "table": "t", "properties": {}}
+    exec(result.to_pyspark(), names)  # noqa: S102 -- the snippet under test, made here
+    assert names["predicates"] == result.predicates
+    assert names["df"] == "a data frame"
+    assert reader.calls == [("u", "t", result.predicates, {})]
+    # Every line of the code is printable, so pasting it shows what it does.
+    assert all(line.isprintable() for line in result.to_pyspark().split("\n"))
+
+
+def scala_unicode_escapes(source: str) -> str:
+    """Do what Scala 2.12 does to source text before anything else.
+
+    A backslash preceded in the source by an even number of backslashes, then
+    one or more ``u`` and four hex digits, is replaced by that UTF-16 unit.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(source):
+        backslashes = i - len(source[:i].rstrip("\\"))
+        match = re.match(r"\\u+([0-9a-fA-F]{4})", source[i:])
+        if match and backslashes % 2 == 0:
+            out.append(chr(int(match.group(1), 16)))
+            i += match.end()
+        else:
+            out.append(source[i])
+            i += 1
+    return "".join(out).encode("utf-16-be", "surrogatepass").decode("utf-16-be", "surrogatepass")
+
+
+SCALA_NAMED = {
+    "b": "\b",
+    "t": "\t",
+    "n": "\n",
+    "f": "\f",
+    "r": "\r",
+    '"': '"',
+    "'": "'",
+    "\\": "\\",
+}
+
+
+def scala_string(literal: str, *, unicode_escapes: bool) -> str:
+    """Read one Scala string literal; Scala 2.13 and 3 also read \\u escapes in it."""
+    assert literal[0] == literal[-1] == '"'
+    body, out, i = literal[1:-1], [], 0
+    while i < len(body):
+        char = body[i]
+        assert char not in '"\n\r', f"{char!r} ends the literal at {i}"
+        if char != "\\":
+            out.append(char)
+            i += 1
+        elif unicode_escapes and body[i + 1] == "u":
+            out.append(chr(int(body[i + 2 : i + 6], 16)))
+            i += 6
+        else:
+            out.append(SCALA_NAMED[body[i + 1]])
+            i += 2
+    text = "".join(out)
+    return text.encode("utf-16-be", "surrogatepass").decode("utf-16-be", "surrogatepass")
+
+
+def scala_literals(snippet: str) -> list[str]:
+    lines = snippet.split("\n")
+    start = lines.index("val predicates = Array(")
+    end = lines.index(")", start)
+    return [line.strip().removesuffix(",") for line in lines[start + 1 : end]]
+
+
+@pytest.mark.parametrize("column", AWKWARD)
+def test_the_scala_literals_read_back_in_scala_2_12_and_2_13(column: str) -> None:
+    result = awkward_plan(column)
+    snippet = result.to_scala()
+    assert all(line.isprintable() for line in snippet.split("\n"))
+    # Scala 2.13 and 3: \u is an escape inside a string.
+    literals = scala_literals(snippet)
+    assert [scala_string(literal, unicode_escapes=True) for literal in literals] == (
+        result.predicates
+    )
+    # Scala 2.12: \u escapes are read first, everywhere; the literal must survive.
+    literals = scala_literals(scala_unicode_escapes(snippet))
+    assert [scala_string(literal, unicode_escapes=False) for literal in literals] == (
+        result.predicates
+    )
+
+
+def test_the_scala_model_reads_unicode_escapes_like_scala_2_12() -> None:
+    # The checks above are only as good as this model of Scala 2.12.
+    assert scala_unicode_escapes("\\u0041 \\uuu0042") == "A B"
+    assert scala_unicode_escapes("\\\\u0041") == "\\\\u0041"
+    assert scala_unicode_escapes("\\\\\\u0041") == "\\\\A"
+    assert scala_unicode_escapes('"\\u0022"') == '"""'
+    assert scala_unicode_escapes("\\ud83d\\ude00") == "😀"
+    # The backslashes are counted in the source, not in what escapes became.
+    assert scala_unicode_escapes("\\u005c\\u0041") == "\\A"

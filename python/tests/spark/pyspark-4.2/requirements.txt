@@ -1,0 +1,8 @@
+# PySpark 4.2 for the spark-e2e job (make spark-e2e SPARK=4.2), installed with
+# --require-hashes. Dependabot proposes patch releases only: each Spark line
+# has its own folder.
+pyspark==4.2.1 \
+    --hash=sha256:d79b7c8ee41e66a9202fe6f600ca90b931ca571ae9dbdf31c58d2672e5102da0
+py4j==0.10.9.9 \
+    --hash=sha256:c7c26e4158defb37b0bb124933163641a2ff6e3a3913f7811b0ddbe07ed61533 \
+    --hash=sha256:f694cad19efa5bd1dee4f3e5270eb406613c974394035e5bfc4ec1aba870b879

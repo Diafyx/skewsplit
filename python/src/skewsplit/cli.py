@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING, Any, NoReturn
 from skewsplit import __version__
 from skewsplit.core.errors import SpecError
 from skewsplit.core.inputs import parse_input
-from skewsplit.core.plan import SPEC_VERSION
+from skewsplit.core.plan import SPEC_VERSION, Plan
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     import psycopg
 
@@ -50,6 +50,14 @@ exit codes:
   {INVALID}  the column cannot be planned, or the plan file is not valid
   {DATABASE}  the database could not be reached, or a query failed or timed out
 """
+
+
+_PLAN_FORMATS: dict[str, Callable[[Plan], str]] = {
+    "text": lambda plan: plan.report,
+    "json": lambda plan: plan.to_json(indent=2),
+    "pyspark": Plan.to_pyspark,
+    "scala": Plan.to_scala,
+}
 
 
 class CommandError(Exception):
@@ -88,7 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
     plan = command("plan", "Plan predicates from the column's statistics in pg_stats")
     plan.add_argument("--column", required=True, help="the column to split, not quoted")
     plan.add_argument("--partitions", required=True, type=int, metavar="N")
-    plan.add_argument("--format", choices=("text", "json"), default="text")
+    plan.add_argument(
+        "--format",
+        choices=tuple(_PLAN_FORMATS),
+        default="text",
+        help="the skew report, the plan as JSON, or PySpark or Scala code that reads the table",
+    )
 
     verify = command("verify", "Check that every row of the table matches exactly one predicate")
     verify.add_argument(
@@ -162,7 +175,7 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
         with _connect(args.dsn, secrets) as conn:
             if args.command == "plan":
                 result = postgres.plan(conn, args.table, args.column, args.partitions)
-                return (result.report if args.format == "text" else result.to_json(indent=2)), OK
+                return _PLAN_FORMATS[args.format](result), OK
             if args.command == "stats":
                 return _stats(postgres.distribution(conn, args.table, args.column), args), OK
             if plan_file is None:

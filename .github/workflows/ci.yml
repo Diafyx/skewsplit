@@ -11,6 +11,10 @@ on:
         description: Run every job, whatever the changed paths
         type: boolean
         default: true
+      every-python:
+        description: Run spark-e2e on every Python of each Spark line, not only the oldest and newest
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,6 +49,7 @@ jobs:
       conformance: ${{ steps.select.outputs.conformance }}
       core-bench: ${{ steps.select.outputs.core-bench }}
       allowed-skips: ${{ steps.select.outputs.allowed-skips }}
+      spark-matrix: ${{ steps.spark.outputs.spark-matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,6 +78,14 @@ jobs:
           args=(--event "$EVENT" --groups "$MATCHED_GROUPS" --labels "$LABELS")
           if [[ "$FULL" == true ]]; then args+=(--full); fi
           python3 scripts/ci_select.py "${args[@]}"
+      # The legs of spark-e2e (scripts/spark_matrix.py lists the Spark lines).
+      - id: spark
+        env:
+          EVERY_PYTHON: ${{ inputs.every-python && 'true' || 'false' }}
+        run: |
+          args=()
+          if [[ "$EVERY_PYTHON" == true ]]; then args+=(--every-python); fi
+          python3 scripts/spark_matrix.py "${args[@]}"
 
   lint:
     name: lint
@@ -242,7 +255,8 @@ jobs:
 
   # Spark reads PostgreSQL with the planned predicates, through the PySpark and
   # Scala snippets (python/tests/spark/). Spark 3.5 supports Java 17 and Spark 4
-  # supports 17 and 21; each Spark line runs on its oldest and newest Python.
+  # supports 17 and 21; each Spark line runs on its oldest and newest Python,
+  # and nightly.yml adds every Python in between (scripts/spark_matrix.py).
   # PySpark comes from python/tests/spark/pyspark-<line>/requirements.txt.
   spark-e2e:
     name: spark-e2e (Spark ${{ matrix.spark }}, Python ${{ matrix.python }}, Java ${{ matrix.java }})
@@ -252,50 +266,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - spark: "3.5"
-            python: "3.9"
-            java: "17"
-          - spark: "3.5"
-            python: "3.11"
-            java: "17"
-          - spark: "4.1"
-            python: "3.10"
-            java: "17"
-          - spark: "4.1"
-            python: "3.10"
-            java: "21"
-          - spark: "4.1"
-            python: "3.14"
-            java: "17"
-          - spark: "4.1"
-            python: "3.14"
-            java: "21"
-          - spark: "4.2"
-            python: "3.10"
-            java: "17"
-          - spark: "4.2"
-            python: "3.10"
-            java: "21"
-          - spark: "4.2"
-            python: "3.14"
-            java: "17"
-          - spark: "4.2"
-            python: "3.14"
-            java: "21"
-          - spark: "4.3"
-            python: "3.11"
-            java: "17"
-          - spark: "4.3"
-            python: "3.11"
-            java: "21"
-          - spark: "4.3"
-            python: "3.14"
-            java: "17"
-          - spark: "4.3"
-            python: "3.14"
-            java: "21"
+      matrix: ${{ fromJSON(needs.changes.outputs.spark-matrix) }}
     services:
       # GitHub-hosted runners accept no inbound connections, so trust
       # authentication needs no stored password; the database is thrown away

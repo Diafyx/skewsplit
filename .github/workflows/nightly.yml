@@ -1,0 +1,196 @@
+name: Nightly
+
+# The checks too slow for every pull request, each night and by hand:
+#
+# - the whole CI suite, with spark-e2e on every Python of each Spark line;
+# - the property tests and the spec invariants with the nightly Hypothesis
+#   profile, and each parser's property tests with the longer fuzz profile;
+# - mutation testing of the core. Below 90% of the mutants killed, it opens an
+#   issue, or comments on the one already open;
+# - every external link in the docs.
+#
+# Run it by hand with "dry-run" to rehearse the issue: mutation-issue then runs
+# whatever the score, finds the issue, and prints what it would write.
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Rehearse the mutation issue (prints it, writes nothing), whatever the score
+        type: boolean
+        default: false
+
+permissions: {}
+
+# One nightly run at a time; a run started while one is going waits for it.
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci:
+    name: ci
+    # ci.yml's pr-size job asks for pull-requests: write. It runs on pull
+    # requests only, so here it is skipped, but a called workflow may not ask
+    # for more than its caller grants.
+    permissions:
+      contents: read
+      pull-requests: write # only for ci.yml's pr-size job, skipped here
+    # zizmor prefers the $/ form, which actionlint 1.7.12 cannot parse yet. A
+    # job-level call is resolved from the running commit, not from a checkout,
+    # so ./ loads nothing a step could have written.
+    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository]
+    with:
+      full: true
+      every-python: true
+
+  hypothesis:
+    name: hypothesis (nightly profile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make property conformance HYPOTHESIS_PROFILE=nightly
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: |
+          uv run --no-project python scripts/junit_summary.py "property, nightly profile" reports/junit-property.xml
+          uv run --no-project python scripts/junit_summary.py "conformance, nightly profile" reports/junit-conformance.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: junit-hypothesis-nightly
+          path: |
+            reports/junit-property.xml
+            reports/junit-conformance.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The parsers of PostgreSQL's text formats: pg arrays, pg_stats rows and the
+  # value codecs, each in its own leg.
+  fuzz:
+    name: fuzz (${{ matrix.parser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        parser: [pgarray, pgstats, codec]
+    env:
+      PARSER: ${{ matrix.parser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make property HYPOTHESIS_PROFILE=fuzz PROPERTY_TESTS="python/tests/property/test_${PARSER}_properties.py"
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "fuzz, $PARSER" reports/junit-property.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: junit-fuzz-${{ matrix.parser }}
+          path: reports/junit-property.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  mutation:
+    name: mutation (core)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      score: ${{ steps.mutation.outputs.score }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - id: mutation
+        run: make mutation
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: mutation
+          path: |
+            reports/mutation.json
+            reports/mutation-survivors.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # Opens the tracking issue when mutation failed, which includes a score below
+  # the minimum, or comments on it if it is open. With dry-run it always runs
+  # and writes nothing.
+  mutation-issue:
+    name: mutation issue
+    needs: mutation
+    if: ${{ !cancelled() && (needs.mutation.result == 'failure' || inputs.dry-run) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # opens the tracking issue or comments on it
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SCORE: ${{ needs.mutation.outputs.score }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open or update the issue
+        run: |
+          body="$RUNNER_TEMP/body.md"
+          {
+            if [[ -n "$SCORE" ]]; then
+              echo "The nightly mutation testing of the core killed $SCORE% of the tested mutants; the minimum is 90%."
+            else
+              echo "The nightly mutation testing of the core failed before it scored the mutants."
+            fi
+            echo
+            echo "The run, with the mutants that survived in its \`mutation\` artifact: $RUN_URL"
+          } > "$body"
+          args=(--title "Nightly mutation testing of the core is below 90%" --label type/test --label area/core --label status/triage --body-file "$body")
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          python3 scripts/tracking_issue.py "${args[@]}"
+
+  links:
+    name: links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make links

@@ -22,7 +22,9 @@ from skewsplit.core.planner import plan
 
 pytestmark = pytest.mark.conformance
 
-SPEC = Path(__file__).parents[3] / "spec"
+# The nearest spec/ above, so a copy of the tests one folder deeper, as make
+# mutation runs them, finds it too.
+SPEC = next(path for path in Path(__file__).parents if (path / "spec").is_dir()) / "spec"
 FIXTURES = sorted((SPEC / "fixtures").glob("*.json"))
 PG_ARRAY = sorted((SPEC / "fixtures" / "pg-array").glob("*.json"))
 PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))

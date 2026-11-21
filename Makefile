@@ -30,7 +30,8 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance bench-core bench clean
+	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance property mutation links \
+	bench-core bench clean
 
 check: lint py-unit coverage packaging docs
 
@@ -117,12 +118,40 @@ docs:
 	if [[ -n "$$changed" ]]; then $(SCRIPT) scripts/check_links.py --external $$changed; fi
 
 # The golden fixtures and the spec invariants, with the ci Hypothesis profile
-# (ten times the examples of a plain run). HYPOTHESIS_PROFILE=nightly searches longer.
+# (ten times the examples of a plain run). HYPOTHESIS_PROFILE=nightly or fuzz searches longer.
 HYPOTHESIS_PROFILE ?= ci
 conformance:
 	mkdir -p $(REPORTS)
 	HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) $(UV_RUN) pytest -m conformance \
 		--junitxml=$(REPORTS)/junit-conformance.xml
+
+# The property tests in PROPERTY_TESTS with $(HYPOTHESIS_PROFILE). nightly.yml
+# runs all of them with the nightly profile, and each parser's with fuzz.
+PROPERTY_TESTS ?= python/tests/property
+property:
+	mkdir -p $(REPORTS)
+	HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) $(UV_RUN) pytest -m property \
+		--junitxml=$(REPORTS)/junit-property.xml $(PROPERTY_TESTS)
+
+# Mutation testing of the core with mutmut, which nightly.yml runs. mutmut runs
+# from python/, where its config is (see python/pyproject.toml), and starts
+# from a clean mutants/ so no result of an earlier run is reused. Fails when
+# fewer than MUTATION_MIN percent of the tested mutants are killed.
+MUTATION_MIN ?= 90
+MUTMUT := cd python && $(UV_RUN) --group mutation mutmut
+mutation:
+	mkdir -p $(REPORTS)
+	rm -rf python/mutants
+	$(MUTMUT) run
+	$(MUTMUT) export-cicd-stats
+	cp python/mutants/mutmut-cicd-stats.json $(REPORTS)/mutation.json
+	$(MUTMUT) results > $(CURDIR)/$(REPORTS)/mutation-survivors.txt
+	$(SCRIPT) scripts/mutation_score.py --min $(MUTATION_MIN) $(REPORTS)/mutation.json
+
+# Every link in every Markdown file, external ones included, which nightly.yml
+# runs. The docs target requests only those in the files a change touches.
+links:
+	$(SCRIPT) scripts/check_links.py --external $(MD_FILES)
 
 # Time the planner micro-benchmarks. CI reports them and never gates on them.
 bench-core:
@@ -218,4 +247,4 @@ pr-hygiene:
 
 clean:
 	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) $(SPARK_VENV) \
-		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks
+		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks python/mutants

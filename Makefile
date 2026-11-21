@@ -30,7 +30,7 @@ COMPARE ?= origin/main
 ZIZMOR_FLAGS ?= --offline
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pr-size pr-hygiene check-fixtures conformance property mutation links \
+	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance property mutation links \
 	bench-core bench clean
 
 check: lint py-unit coverage packaging docs
@@ -159,15 +159,30 @@ bench-core:
 	$(UV_RUN) pytest -m '' -p no:randomly --benchmark-enable \
 		--benchmark-json=$(REPORTS)/benchmark-core.json python/tests/unit/test_planner_benchmarks.py
 
-# The PostgreSQL JDBC driver that bench and spark-e2e give Spark, downloaded
-# from Maven Central and checked by hash. Dependabot cannot see it, so its
-# version and hash are pinned here only. $(call fetch-pgjdbc,PATH) downloads it.
-# Maven Central has answered a burst of parallel CI downloads with 429 and
-# with 404, so curl retries every error; the hash check rejects anything else.
+# The PostgreSQL JDBC driver that bench and spark-e2e give Spark, from Maven
+# Central and checked by hash. Dependabot cannot see it, so its version and
+# hash are pinned here only.
+#
+# make pgjdbc puts it in PGJDBC_JAR. A jar already there is used after its hash
+# is checked, so a run downloads it only when it is missing. A download is
+# checked before it takes the jar's name. With PGJDBC_DOWNLOAD=no, as ci.yml's
+# spark-e2e legs pass with the jar from its pgjdbc job, a missing jar is an
+# error instead of a request to Maven Central, which has refused some of many
+# parallel downloads. curl retries every error.
 PGJDBC_VERSION := 42.7.14
 PGJDBC_SHA256 := 73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c
 PGJDBC_URL := https://repo1.maven.org/maven2/org/postgresql/postgresql/$(PGJDBC_VERSION)/postgresql-$(PGJDBC_VERSION).jar
-fetch-pgjdbc = curl -fsSL --retry 5 --retry-all-errors -o $(1) $(PGJDBC_URL) && echo "$(PGJDBC_SHA256)  $(1)" | sha256sum --check --strict
+PGJDBC_JAR := .pgjdbc/postgresql-$(PGJDBC_VERSION).jar
+PGJDBC_DOWNLOAD ?= yes
+pgjdbc:
+	mkdir -p $(dir $(PGJDBC_JAR))
+	if [[ ! -f $(PGJDBC_JAR) ]]; then \
+		if [[ "$(PGJDBC_DOWNLOAD)" != yes ]]; then echo "$(PGJDBC_JAR) is missing"; exit 1; fi; \
+		curl -fsSL --retry 5 --retry-all-errors -o $(PGJDBC_JAR).part $(PGJDBC_URL); \
+		echo "$(PGJDBC_SHA256)  $(PGJDBC_JAR).part" | sha256sum --check --strict; \
+		mv $(PGJDBC_JAR).part $(PGJDBC_JAR); \
+	fi
+	echo "$(PGJDBC_SHA256)  $(PGJDBC_JAR)" | sha256sum --check --strict
 
 # The Spark benchmark (bench/README.md): build the skewed table, read it in each
 # way, and write $(REPORTS)/RESULTS.md. PySpark goes into its own environment
@@ -177,7 +192,6 @@ BENCH_PARTITIONS ?= 16
 BENCH_RUNS ?= 3
 BENCH_PYTHON := 3.14
 BENCH_VENV := .venv-bench
-PGJDBC_JAR := $(BENCH_VENV)/postgresql-$(PGJDBC_VERSION).jar
 bench:
 	@if [[ -z "$${PGHOST:-}" || -z "$${JAVA_HOME:-}" ]]; then \
 		echo "bench needs PostgreSQL and Java (set PGHOST and JAVA_HOME). It runs in CI only."; \
@@ -188,7 +202,7 @@ bench:
 	rm -rf $(BENCH_VENV)
 	uv venv --quiet --python $(BENCH_PYTHON) $(BENCH_VENV)
 	uv pip install --quiet --python $(BENCH_VENV) --require-hashes -r bench/requirements.txt
-	$(call fetch-pgjdbc,$(PGJDBC_JAR))
+	$(MAKE) --no-print-directory pgjdbc
 	psql -v rows=$(BENCH_ROWS) -f bench/skewed_table.sql
 	$(BENCH_VENV)/bin/python bench/run.py --jdbc-jar $(PGJDBC_JAR) \
 		--partitions $(BENCH_PARTITIONS) --runs $(BENCH_RUNS) $(REPORTS)/bench.json
@@ -222,7 +236,6 @@ SPARK_REQUIREMENTS := python/tests/spark/pyspark-$(SPARK)/requirements.txt
 # What uv pip installs PySpark from. canary.yml passes a release that is not
 # pinned yet, such as SPARK_INSTALL=pyspark==4.4.0.dev1, which has no hash.
 SPARK_INSTALL ?= --require-hashes -r $(SPARK_REQUIREMENTS)
-SPARK_JDBC_JAR := $(SPARK_VENV)/postgresql-$(PGJDBC_VERSION).jar
 spark-e2e:
 	@if [[ -z "$${SKEWSPLIT_PG_DSN:-}" || -z "$${JAVA_HOME:-}" ]]; then \
 		echo "spark-e2e needs PostgreSQL and Java (set SKEWSPLIT_PG_DSN and JAVA_HOME). It runs in CI only."; \
@@ -232,8 +245,8 @@ spark-e2e:
 	rm -rf $(SPARK_VENV)
 	UV_PROJECT_ENVIRONMENT=$(SPARK_VENV) uv sync --frozen --quiet --python $(PYTHON)
 	uv pip install --quiet --python $(SPARK_VENV) $(SPARK_INSTALL)
-	$(call fetch-pgjdbc,$(SPARK_JDBC_JAR))
-	SKEWSPLIT_SPARK=$(SPARK) SKEWSPLIT_PGJDBC_JAR=$(abspath $(SPARK_JDBC_JAR)) \
+	$(MAKE) --no-print-directory pgjdbc
+	SKEWSPLIT_SPARK=$(SPARK) SKEWSPLIT_PGJDBC_JAR=$(abspath $(PGJDBC_JAR)) \
 		$(SPARK_VENV)/bin/python -m pytest -m spark --junitxml=$(REPORTS)/junit-spark-e2e.xml
 
 # The size label for the changes since $(COMPARE). PR_BODY names a file with
@@ -248,5 +261,5 @@ pr-hygiene:
 	$(SCRIPT) scripts/pr_hygiene.py
 
 clean:
-	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) $(SPARK_VENV) \
+	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) $(SPARK_VENV) .pgjdbc \
 		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks python/mutants

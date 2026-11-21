@@ -253,6 +253,28 @@ jobs:
           path: reports/junit-py-integration.xml
           retention-days: 7
 
+  # Downloads the JDBC driver for spark-e2e once per run (make pgjdbc), checked
+  # by hash, so the legs make no request to Maven Central: it has refused some
+  # of their parallel downloads.
+  pgjdbc:
+    name: pgjdbc
+    needs: changes
+    if: needs.changes.outputs.spark-e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make pgjdbc
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pgjdbc
+          path: .pgjdbc/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
   # Spark reads PostgreSQL with the planned predicates, through the PySpark and
   # Scala snippets (python/tests/spark/). Spark 3.5 supports Java 17 and Spark 4
   # supports 17 and 21; each Spark line runs on its oldest and newest Python,
@@ -260,7 +282,7 @@ jobs:
   # PySpark comes from python/tests/spark/pyspark-<line>/requirements.txt.
   spark-e2e:
     name: spark-e2e (Spark ${{ matrix.spark }}, Python ${{ matrix.python }}, Java ${{ matrix.java }})
-    needs: changes
+    needs: [changes, pgjdbc]
     if: needs.changes.outputs.spark-e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -303,7 +325,12 @@ jobs:
           home="JAVA_HOME_${JAVA}_X64"
           [[ -n "${!home:-}" ]]
           echo "JAVA_HOME=${!home}" >> "$GITHUB_ENV"
-      - run: make spark-e2e PYTHON="$PYTHON" SPARK="$SPARK"
+      # The jar from the pgjdbc job. make checks its hash, and never downloads.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pgjdbc
+          path: .pgjdbc
+      - run: make spark-e2e PYTHON="$PYTHON" SPARK="$SPARK" PGJDBC_DOWNLOAD=no
       - name: Summarise tests
         if: ${{ !cancelled() }}
         run: uv run --no-project python scripts/junit_summary.py "spark-e2e, Spark $SPARK, Python $PYTHON, Java $JAVA" reports/junit-spark-e2e.xml

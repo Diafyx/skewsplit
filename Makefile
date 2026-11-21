@@ -133,10 +133,12 @@ bench-core:
 # The PostgreSQL JDBC driver that bench and spark-e2e give Spark, downloaded
 # from Maven Central and checked by hash. Dependabot cannot see it, so its
 # version and hash are pinned here only. $(call fetch-pgjdbc,PATH) downloads it.
+# Maven Central has answered a burst of parallel CI downloads with 429 and
+# with 404, so curl retries every error; the hash check rejects anything else.
 PGJDBC_VERSION := 42.7.14
 PGJDBC_SHA256 := 73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c
 PGJDBC_URL := https://repo1.maven.org/maven2/org/postgresql/postgresql/$(PGJDBC_VERSION)/postgresql-$(PGJDBC_VERSION).jar
-fetch-pgjdbc = curl -fsSL --retry 5 -o $(1) $(PGJDBC_URL) && echo "$(PGJDBC_SHA256)  $(1)" | sha256sum --check --strict
+fetch-pgjdbc = curl -fsSL --retry 5 --retry-all-errors -o $(1) $(PGJDBC_URL) && echo "$(PGJDBC_SHA256)  $(1)" | sha256sum --check --strict
 
 # The Spark benchmark (bench/README.md): build the skewed table, read it in each
 # way, and write $(REPORTS)/RESULTS.md. PySpark goes into its own environment

@@ -9,8 +9,9 @@ skewsplit reads a database column's distribution and gives Spark balanced,
 index-friendly partition predicates for its JDBC reader, together with a
 report of the skew that remains.
 
-> **Status: pre-release.** Nothing is published yet and the API will change.
-> The roadmap is in the [milestones](https://github.com/Diafyx/skewsplit/milestones).
+> **Status: early development (pre-alpha).** The API can change in any 0.x
+> release. The roadmap is in the
+> [milestones](https://github.com/Diafyx/skewsplit/milestones).
 
 ## The problem
 
@@ -22,22 +23,107 @@ to a hand-written filter. Spark's other option, a `predicates` list with one
 `WHERE` clause per partition, avoids this, but someone has to write those
 clauses.
 
-## What skewsplit will do
+## How it works
 
-The first release, python v0.1.0, is planned to:
+skewsplit writes those clauses. It:
 
-- read the column's statistics (for PostgreSQL, `pg_stats`: most common values
+- reads the column's statistics (for PostgreSQL, `pg_stats`: most common values
   and an equi-depth histogram), so planning does not scan the table;
-- plan ranges of roughly equal *row counts* that the database can answer from
+- plans ranges of roughly equal *row counts* that the database can answer from
   an index on the column;
-- give `NULL` rows their own `col IS NULL` predicate, and give a value that is
-  too frequent to split its own `col = value` predicate, with a warning;
-- report the estimated skew of the plan, where the estimate came from and how
+- gives `NULL` rows their own `col IS NULL` predicate, and gives a value that
+  is too frequent to split its own `col = value` predicate, with a warning;
+- reports the estimated skew of the plan, where the estimate came from and how
   fresh the statistics are;
-- verify a plan in one scan: every row is matched by exactly one predicate.
+- verifies a plan in one scan: every row is matched by exactly one predicate.
 
-The predicates will contain real values from the column, so treat the output
-like the data it describes.
+The predicates match every row exactly once whatever the data, even when the
+statistics are wrong; only the balance depends on them.
+
+**The output contains real values from the column**: split points and frequent
+values. Treat plans, reports, generated code and logs like the data they
+describe.
+
+## Install
+
+```sh
+pip install "skewsplit[postgres]"
+```
+
+The `postgres` extra installs psycopg, which also needs libpq: add
+`psycopg[binary]` if your system has none. Without the extra, skewsplit has no
+dependencies and plans from a distribution you give it.
+
+## Quick start
+
+Plan a read of `public.orders` split on `customer_id`, from the column's
+statistics:
+
+```python
+from skewsplit import postgres
+
+plan = postgres.plan("host=db dbname=shop user=reader", "public.orders", "customer_id", 16)
+print(plan.report)
+df = spark.read.jdbc(url, "public.orders", predicates=plan.predicates, properties=properties)
+```
+
+Spark runs one task per predicate. `url` and `properties` are your JDBC URL and
+connection properties, as for any `spark.read.jdbc`.
+
+The planner itself needs no database. Here it plans 4 partitions for a column
+with 100 NULL rows, the value 42 in 500 rows, the value 7 in 60, and 400 more
+rows spread from 1 to 1000:
+
+```python
+>>> import skewsplit
+>>> plan = skewsplit.plan(
+...     {
+...         "column": "customer_id",
+...         "type": "int4",
+...         "null_rows": 100,
+...         "mcv": [{"value": "7", "rows": 60}, {"value": "42", "rows": 500}],
+...         "histogram": {"bounds": ["1", "250", "500", "750", "1000"], "rows": 400},
+...     },
+...     4,
+... )
+>>> plan.predicates
+['"customer_id" IS NULL', '"customer_id" < 42', '"customer_id" = 42', '"customer_id" > 42 AND "customer_id" < 520', '"customer_id" >= 520']
+>>> print(plan.report)
+customer_id (int4): 1060 estimated rows, 4 of 4 partitions plus one for NULL, skew score 1.887
+rows  predicate
+ 100  "customer_id" IS NULL
+  76  "customer_id" < 42
+ 500  "customer_id" = 42
+ 192  "customer_id" > 42 AND "customer_id" < 520
+ 192  "customer_id" >= 520
+warning dominant_value: 42 holds 500 rows, at least one partition's share; it cannot be split further on this column
+>>> plan.skew_score
+1.887
+
+```
+
+The skew score is the largest predicate's rows over an even share, the total
+rows divided by the partitions: 1.0 is perfect balance. Here the value 42 alone
+holds almost twice an even share.
+
+`to_pyspark()` and `to_scala()` give the code that reads the table with these
+predicates, ready to paste:
+
+```python
+>>> print(plan.to_pyspark())
+# skewsplit: 4 of 4 partitions plus one for NULL, with an estimated skew score of 1.887
+# spark, url, table and properties are yours: the session, the JDBC URL, the table,
+# and the connection properties such as the user and password.
+predicates = [
+    '"customer_id" IS NULL',
+    '"customer_id" < 42',
+    '"customer_id" = 42',
+    '"customer_id" > 42 AND "customer_id" < 520',
+    '"customer_id" >= 520',
+]
+df = spark.read.jdbc(url, table, predicates=predicates, properties=properties)
+
+```
 
 ## Python API
 
@@ -79,6 +165,20 @@ skewsplit stats  --table T --column C [--partitions N]
 - `stats` prints the column's distribution as JSON, which `skewsplit.plan`
   takes. With `--partitions`, it is the complete planner input of the spec.
 
+For a column with the statistics of the quick start, `plan` prints:
+
+```text
+$ skewsplit plan --table public.orders --column customer_id --partitions 4
+customer_id (int4): 1060 estimated rows, 4 of 4 partitions plus one for NULL, skew score 1.887
+rows  predicate
+ 100  "customer_id" IS NULL
+  76  "customer_id" < 42
+ 500  "customer_id" = 42
+ 192  "customer_id" > 42 AND "customer_id" < 520
+ 192  "customer_id" >= 520
+warning dominant_value: 42 holds 500 rows, at least one partition's share; it cannot be split further on this column
+```
+
 Each command connects with `--dsn`, a libpq connection string or URI, or
 without it with the `PG*` environment variables. Keep a password in
 `PGPASSWORD` or `~/.pgpass` rather than on the command line, where other users
@@ -93,6 +193,50 @@ and never quote a `--dsn` that is not valid.
 | 3 | The column cannot be planned (for example, it has no statistics), or the plan file is not valid |
 | 4 | The database could not be reached, or a query failed or timed out |
 
+## When to use hash-mod instead
+
+The usual alternative splits on a hash of the column, one predicate per
+remainder, such as `((hashtextextended(col::text, 0) % N) + N) % N = i`. It
+needs no statistics and works on any type, but an ordinary index cannot
+answer it, so every partition reads the whole table. Prefer it when:
+
+- the column's type is not one skewsplit supports (see below), such as `text`
+  or `uuid`;
+- the table has no statistics you can trust and you cannot run `ANALYZE`;
+- the table is small enough that reading it once per partition costs nothing.
+
+Neither method can split a value that holds more rows than a partition should:
+every row of that value hashes to the same partition, too. Split on another
+column, such as the primary key, instead.
+
+## Limitations
+
+- **Statistics.** A plan is as balanced as the statistics are accurate:
+  - a range can read up to two histogram buckets more or fewer rows than its
+    estimate;
+  - on a large table, `ANALYZE` reads a sample, and the sampling error comes on
+    top. A higher statistics target (`ALTER TABLE ... ALTER COLUMN ... SET
+    STATISTICS`, then `ANALYZE`) gives a finer histogram;
+  - when more than a tenth of the rows changed since the last `ANALYZE`, the
+    plan warns `stale_statistics`. Run `ANALYZE` and plan again.
+
+  The predicates still match every row exactly once, and `skewsplit verify`
+  checks that on the real table.
+- **Dominant values.** A value with at least one partition's share of the rows
+  gets its own `col = value` predicate and the warning `dominant_value`. No
+  plan on this column can make that partition smaller. With too few
+  partitions to give it a predicate of its own, the warning is
+  `dominant_value_not_isolated`.
+- **NULL rows** always get their own predicate. When they hold more than one
+  partition's share, the plan warns `nulls_exceed_share`.
+- **Types.** `smallint`, `integer`, `bigint`, `numeric` with a declared scale,
+  `date`, `timestamp` and `timestamptz`. Any other type, and `numeric` without
+  a scale, is the error `unsupported_type`.
+- **Tables.** Tables, partitioned tables, materialized views and foreign
+  tables, in PostgreSQL only. The role needs `SELECT` on the column, and no
+  row-level security may apply to it: otherwise `pg_stats` hides the
+  statistics, and planning fails with `permission_denied`.
+
 ## Supported versions
 
 <!-- supported-versions:start -->
@@ -100,6 +244,7 @@ and never quote a `--dsn` that is not valid.
 |-----------|----------|-------|
 | Python | 3.9 to 3.15 | 3.9 and 3.10 stay supported for Amazon EMR and AWS Glue users |
 | Spark | 3.5, 4.1, 4.2, 4.3 | 4.0 reaches end of life on 23 November 2026 and is not tested |
+| Python for Spark | 3.9 to 3.11 for Spark 3.5; 3.10 to 3.14 for 4.1 and 4.2; 3.11 to 3.14 for 4.3 | The Pythons each PySpark line supports; no PySpark line supports 3.15 yet |
 | Java (for Spark) | 17 for Spark 3.5; 17 and 21 for Spark 4.x | Spark 3.5 does not support Java 21 |
 | PostgreSQL | 15 to 19 | 14 reached end of life on 12 November 2026; 19 was released on 19 November 2026 |
 | Operating systems | Linux, macOS, Windows | Database and Spark tests run on Linux |
@@ -107,6 +252,22 @@ and never quote a `--dsn` that is not valid.
 Support for a version is dropped only in a minor release, announced in the
 changelog one release ahead.
 <!-- supported-versions:end -->
+
+## Benchmark
+
+Before the adapter was built, a spike measured whether ranges of equal row
+counts beat the alternatives on an indexed, skewed column. It read a table of
+15 million rows into Spark 4.3 with 16 partitions, from PostgreSQL 18:
+
+| Column | Largest task, default bounds | Largest task, quantile ranges | Ranges against hash-mod: slowest task | Ranges against hash-mod: whole job |
+|--------|-----------------------------:|------------------------------:|--------------------------------------:|-----------------------------------:|
+| `customer_id` (Zipf-like) | 83% of the rows | 8% | 32% faster | 20% faster |
+| `created_at` (recent-heavy) | 62% of the rows | 6% | 37% faster | 43% faster |
+
+The spike computed exact quantiles with a query that scans the column, which
+took 2.7 and 4.7 seconds; skewsplit plans the same kind of ranges from
+`pg_stats` without a scan. The method and every number are in
+[bench/README.md](bench/README.md) and [bench/RESULTS.md](bench/RESULTS.md).
 
 ## Contributing
 

@@ -23,6 +23,7 @@ version only. After 1.0 this policy will cover more versions.
 |-----------|----------|-------|
 | Python | 3.9 to 3.15 | 3.9 and 3.10 stay supported for Amazon EMR and AWS Glue users |
 | Spark | 3.5, 4.1, 4.2, 4.3 | 4.0 reaches end of life on 23 November 2026 and is not tested |
+| Python for Spark | 3.9 to 3.11 for Spark 3.5; 3.10 to 3.14 for 4.1 and 4.2; 3.11 to 3.14 for 4.3 | The Pythons each PySpark line supports; no PySpark line supports 3.15 yet |
 | Java (for Spark) | 17 for Spark 3.5; 17 and 21 for Spark 4.x | Spark 3.5 does not support Java 21 |
 | PostgreSQL | 15 to 19 | 14 reached end of life on 12 November 2026; 19 was released on 19 November 2026 |
 | Operating systems | Linux, macOS, Windows | Database and Spark tests run on Linux |

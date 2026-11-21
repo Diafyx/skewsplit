@@ -87,14 +87,13 @@ def test_a_read_with_the_predicates_returns_every_row_once(
 
     plan = postgres.plan(database.dsn, skewed, "v", PARTITIONS)
     df = run_pyspark_snippet(plan.to_pyspark(), spark, database, skewed)["df"]
-    # Spark makes one partition of each predicate, in order.
+    # Spark makes one partition of each predicate, in order. Only count() is
+    # used: collect() leaves a socket open in PySpark 3.5 and 4.1.
     assert df.rdd.getNumPartitions() == len(plan.predicates)
-    counted = df.groupBy(spark_partition_id().alias("p")).count().collect()
-    sizes = [0] * len(plan.predicates)
-    for row in counted:
-        sizes[row["p"]] = row["count"]
+    partition = spark_partition_id()
+    sizes = [df.where(partition == p).count() for p in range(len(plan.predicates))]
     assert sum(sizes) == df.count() == ROWS
-    assert len(df.select("id").distinct().collect()) == ROWS
+    assert df.select("id").distinct().count() == ROWS
     # Each partition holds exactly its predicate's rows.
     found = postgres.verify(database.dsn, skewed, "v", plan.predicates, counts=True)
     assert found.ok
@@ -155,19 +154,25 @@ def test_the_scala_snippet_in_spark_shell(
             f"properties.setProperty({scala_text(key)}, {scala_text(value)})"
             for key, value in database.properties.items()
         ),
-        # Each line of the shell is compiled on its own, so these two need two names.
         "def utf8Hex(value: String): String =",
         '  value.getBytes("UTF-8").map(b => "%02x".format(b & 0xff)).mkString',
         'def hex(values: Array[String]): String = values.map(utf8Hex).mkString(",")',
     ]
+    # The shell compiles the whole script as one unit, and both snippets define
+    # predicates and df, so each goes in a block of its own. A block needs
+    # locally: a bare { on a new line would continue the line before it. The
+    # markers are split, so they are not in the source the shell may echo.
     script = "\n".join(
         [
             *settings,
+            "locally {",
             plan.to_scala(),
-            # Split, so the marker is not in the source the shell may echo.
             'println("SKEW" + "SPLIT rows " + df.count() + " " + hex(predicates))',
+            "}",
+            "locally {",
             nasty.to_scala(),
             'println("SKEW" + "SPLIT literals " + hex(predicates))',
+            "}",
             "sys.exit(0)",
             "",
         ]

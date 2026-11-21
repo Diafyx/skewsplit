@@ -219,17 +219,19 @@ py-integration:
 SPARK ?= 4.3
 SPARK_VENV := .venv-spark
 SPARK_REQUIREMENTS := python/tests/spark/pyspark-$(SPARK)/requirements.txt
+# What uv pip installs PySpark from. canary.yml passes a release that is not
+# pinned yet, such as SPARK_INSTALL=pyspark==4.4.0.dev1, which has no hash.
+SPARK_INSTALL ?= --require-hashes -r $(SPARK_REQUIREMENTS)
 SPARK_JDBC_JAR := $(SPARK_VENV)/postgresql-$(PGJDBC_VERSION).jar
 spark-e2e:
 	@if [[ -z "$${SKEWSPLIT_PG_DSN:-}" || -z "$${JAVA_HOME:-}" ]]; then \
 		echo "spark-e2e needs PostgreSQL and Java (set SKEWSPLIT_PG_DSN and JAVA_HOME). It runs in CI only."; \
 		exit 1; \
 	fi
-	[[ -f $(SPARK_REQUIREMENTS) ]]
 	mkdir -p $(REPORTS)
 	rm -rf $(SPARK_VENV)
 	UV_PROJECT_ENVIRONMENT=$(SPARK_VENV) uv sync --frozen --quiet --python $(PYTHON)
-	uv pip install --quiet --python $(SPARK_VENV) --require-hashes -r $(SPARK_REQUIREMENTS)
+	uv pip install --quiet --python $(SPARK_VENV) $(SPARK_INSTALL)
 	$(call fetch-pgjdbc,$(SPARK_JDBC_JAR))
 	SKEWSPLIT_SPARK=$(SPARK) SKEWSPLIT_PGJDBC_JAR=$(abspath $(SPARK_JDBC_JAR)) \
 		$(SPARK_VENV)/bin/python -m pytest -m spark --junitxml=$(REPORTS)/junit-spark-e2e.xml

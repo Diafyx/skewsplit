@@ -5,6 +5,7 @@ so that the order of ordinals is the order of the values (spec section 2).
 The planner works on ordinals only; a codec reads values from PostgreSQL's
 text form and writes them back to text and to SQL literals.
 
+>>> from skewsplit.core.codecs import codec_for
 >>> codec = codec_for("date", None)
 >>> codec.parse("2026-11-18")
 20775

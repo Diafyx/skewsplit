@@ -9,7 +9,7 @@ import pytest
 from skewsplit.core import planner
 from skewsplit.core.errors import SpecError
 from skewsplit.core.inputs import parse_input
-from skewsplit.core.plan import Plan, error_json
+from skewsplit.core.plan import Plan, error_dict
 from skewsplit.core.planner import Estimate, _allocate, plan
 
 
@@ -28,7 +28,7 @@ def make(
 
 def table(result: Plan) -> list[tuple[str, int]]:
     """The non-NULL predicates with their estimated rows."""
-    return [(p.sql.replace('"c" ', ""), p.estimated_rows) for p in result.predicates[1:]]
+    return [(p.sql.replace('"c" ', ""), p.estimated_rows) for p in result.parts[1:]]
 
 
 def codes(result: Plan) -> list[str]:
@@ -81,7 +81,7 @@ def test_the_example_of_section_10() -> None:
         "warnings": [{"code": "dominant_value", "value": "42", "rows": 500}],
         "source": None,
     }
-    out = plan(SECTION_1).to_json()
+    out = plan(SECTION_1).to_dict()
     warnings = out["warnings"]
     assert isinstance(warnings, list)
     assert "cannot be split further" in warnings[0].pop("message")
@@ -133,7 +133,7 @@ def test_dominant_values(
     found = {code: [w.value for w in result.warnings if w.code == code] for code in codes(result)}
     assert found.get("dominant_value", []) == dominant
     assert found.get("dominant_value_not_isolated", []) == not_isolated
-    assert [p.value for p in result.predicates if p.kind == "value"] == dominant
+    assert [p.value for p in result.parts if p.kind == "value"] == dominant
 
 
 # Section 4.2: sharing the ranges among segments.
@@ -189,7 +189,7 @@ def test_split_point_at_the_type_limit() -> None:
 def test_dropped_split_point_gives_fewer_partitions() -> None:
     result = plan(make(["1", "5", "5", "5", "100"], 400))
     assert table(result) == [("< 5", 100), (">= 5 AND < 6", 201), (">= 6", 99)]
-    assert result.warnings[0].to_json()["requested"] == 4
+    assert result.warnings[0].to_dict()["requested"] == 4
     assert (result.planned_partitions, codes(result)) == (3, ["fewer_partitions"])
 
 
@@ -227,7 +227,7 @@ def test_one_partition_is_is_not_null() -> None:
 )
 def test_column_is_quoted(column: str, quoted: str) -> None:
     result = plan(make(["1", "3"], 2, column=column, partitions=2))
-    assert [p.sql for p in result.predicates] == [
+    assert [p.sql for p in result.parts] == [
         f"{quoted} IS NULL",
         f"{quoted} < 2",
         f"{quoted} >= 2",
@@ -254,15 +254,15 @@ def test_dates_and_timestamps_are_quoted_with_a_cast(
     type_name: str, bounds: list[str], sql: str
 ) -> None:
     result = plan(make(bounds, 2, type=type_name, partitions=2))
-    assert result.predicates[1].sql == sql
+    assert result.parts[1].sql == sql
 
 
 def test_numeric_keeps_its_scale() -> None:
     result = plan(make(["0", "1"], 2, type="numeric", scale=2, partitions=2))
-    out = result.to_json()
+    out = result.to_dict()
     assert (out["type"], out["scale"]) == ("numeric", 2)
     assert table(result) == [("< 0.50", 1), (">= 0.50", 1)]
-    assert "scale" not in plan(SECTION_1).to_json()
+    assert "scale" not in plan(SECTION_1).to_dict()
 
 
 # Section 7: skew score.
@@ -271,7 +271,7 @@ def test_skew_score_of_an_empty_table_is_null() -> None:
     assert table(result) == [("IS NOT NULL", 0)]
     assert (result.skew_milli, result.skew_score) == (None, None)
     assert codes(result) == ["fewer_partitions", "no_rows"]
-    assert result.to_json()["skew_score"] is None
+    assert result.to_dict()["skew_score"] is None
 
 
 def test_skew_score_rounds_half_up() -> None:
@@ -284,7 +284,7 @@ def test_skew_score_rounds_half_up() -> None:
 def test_nulls_exceed_share() -> None:
     bounds = ["2026-01-01", "2026-04-01", "2026-07-01", "2026-10-01"]
     result = plan(make(bounds, 300, type="date", null_rows=700, partitions=3))
-    assert [w.to_json() for w in result.warnings] == [
+    assert [w.to_dict() for w in result.warnings] == [
         {"code": "nulls_exceed_share", "rows": 700, "message": result.warnings[0].message}
     ]
     assert result.skew_score == 2.1
@@ -292,20 +292,20 @@ def test_nulls_exceed_share() -> None:
 
 def test_all_null() -> None:
     result = plan(make(None, null_rows=10, partitions=3))
-    assert [p.sql for p in result.predicates] == ['"c" IS NULL', '"c" IS NOT NULL']
+    assert [p.sql for p in result.parts] == ['"c" IS NULL', '"c" IS NOT NULL']
     assert codes(result) == ["fewer_partitions", "nulls_exceed_share"]
     assert result.skew_score == 3.0
 
 
 def test_source_is_copied() -> None:
     source = {"strategy": "pg_stats", "analyzed": "2026-11-18 00:00:00+00"}
-    assert plan(make(["1", "3"], 2, source=source)).to_json()["source"] == source
+    assert plan(make(["1", "3"], 2, source=source)).to_dict()["source"] == source
 
 
 def test_invalid_input_raises_spec_error() -> None:
     with pytest.raises(SpecError) as caught:
         plan(make(partitions=0))
-    assert error_json(caught.value) == {
+    assert error_dict(caught.value) == {
         "spec_version": "1.0",
         "error": {"code": "invalid_partitions", "message": caught.value.message},
     }

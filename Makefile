@@ -37,11 +37,14 @@ check: lint py-unit coverage packaging docs
 check-all: check py-lowest conformance
 
 # ruff, mypy, spelling, workflow audits, the issue forms and Dependabot config
-# against their schemas, and the golden fixtures.
+# against their schemas, and the golden fixtures. mypy also checks the >>>
+# examples of the docstrings and the Markdown files, written out as modules.
 lint: check-filters check-fixtures
 	$(UV_RUN) ruff check
 	$(UV_RUN) ruff format --check
 	$(UV_RUN) mypy
+	$(SCRIPT) scripts/extract_examples.py $(REPORTS)/examples python/src $(MD_FILES)
+	$(UV_RUN) mypy $(REPORTS)/examples
 	$(UV_RUN) typos
 	$(UV_RUN) actionlint
 	$(UV_RUN) zizmor $(ZIZMOR_FLAGS) .github

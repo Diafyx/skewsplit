@@ -147,7 +147,7 @@ def verify_plan(
         database,
         table,
         plan.column,
-        [predicate.sql for predicate in plan.predicates],
+        plan.predicates,
         counts=counts,
         statement_timeout_ms=statement_timeout_ms,
     )
@@ -167,7 +167,7 @@ def verify_plan(
                 "estimated_rows": predicate.estimated_rows,
                 "actual_rows": None if actual is None else actual[i],
             }
-            for i, predicate in enumerate(plan.predicates)
+            for i, predicate in enumerate(plan.parts)
         ],
         "skew_score": {
             "estimated": plan.skew_score,

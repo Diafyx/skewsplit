@@ -17,7 +17,7 @@ from skewsplit.core.codecs import codec_for
 from skewsplit.core.errors import SpecError
 from skewsplit.core.pgarray import parse_values
 from skewsplit.core.pgstats import from_pg_stats
-from skewsplit.core.plan import SPEC_VERSION, error_json
+from skewsplit.core.plan import SPEC_VERSION, error_dict
 from skewsplit.core.planner import plan
 
 pytestmark = pytest.mark.conformance
@@ -31,9 +31,9 @@ PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))
 def run(data: object) -> dict[str, Any]:
     """Return the output for an input as a JSON round trip: a plan or an error."""
     try:
-        out = plan(data).to_json()
+        out = plan(data).to_dict()
     except SpecError as error:
-        out = error_json(error)
+        out = error_dict(error)
     decoded: dict[str, Any] = json.loads(json.dumps(out, allow_nan=False))
     return decoded
 
@@ -44,7 +44,7 @@ def read_array(data: dict[str, Any]) -> dict[str, Any]:
         codec = codec_for(data["type"], data.get("scale"))
         out: object = {"spec_version": SPEC_VERSION, "values": parse_values(data["text"], codec)}
     except SpecError as error:
-        out = error_json(error)
+        out = error_dict(error)
     decoded: dict[str, Any] = json.loads(json.dumps(out))
     return decoded
 
@@ -54,7 +54,7 @@ def convert(data: object) -> dict[str, Any]:
     try:
         out: object = {"spec_version": SPEC_VERSION, "input": from_pg_stats(data)}
     except SpecError as error:
-        out = error_json(error)
+        out = error_dict(error)
     decoded: dict[str, Any] = json.loads(json.dumps(out, allow_nan=False))
     return decoded
 

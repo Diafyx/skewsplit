@@ -255,7 +255,7 @@ def test_plan_from_statistics(monkeypatch: pytest.MonkeyPatch) -> None:
     fake, result = plan_with(monkeypatch, 4)
     _, stats = read(TABLE, FACTS, ROW)
     expected = plan(from_pg_stats(stats.conversion_input(4)))
-    assert result.predicates == expected.predicates
+    assert result.parts == expected.parts
     assert result.source == {
         "statistics": "pg_stats",
         "rows_estimate": 2000,

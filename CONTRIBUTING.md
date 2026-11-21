@@ -102,6 +102,19 @@ Use a throwaway database all the same.
     one already open. Run the workflow by hand with `dry-run` to rehearse that
     issue: it finds the issue and prints what it would write;
   - `make links`, which requests every external link in the docs.
+- **Canary** (`canary.yml`, every Monday and by hand) runs the tests against
+  releases that CI does not test yet, and never gates a pull request:
+  - the next Python, pre-release or not, with `make py-unit`;
+  - a PySpark line newer than the pinned ones, pre-release or not, with
+    `make spark-e2e`;
+  - a PostgreSQL beta or release candidate newer than CI's, with
+    `make py-integration`;
+  - a JDBC driver newer than the Makefile's, with `make spark-e2e`.
+
+  `scripts/canary_versions.py` finds them, and a job whose release does not
+  exist yet is skipped with a notice. When a job fails, the canary opens an
+  issue, or comments on the one already open; `dry-run` rehearses it as in
+  nightly.
 - `make bench-core` times the planner. The `core-bench` job runs it when the
   core changes and reports the timings in its summary; it never gates.
 - Every `>>>` example in a Markdown file is run by the docs check.

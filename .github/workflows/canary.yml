@@ -1,0 +1,275 @@
+name: Canary
+
+# Runs the tests against releases that CI does not test yet, each week and by
+# hand, so a break shows before users meet it. It is not part of ci-gate.
+#
+# The resolve job finds each upcoming release (scripts/canary_versions.py):
+# the next Python, a PySpark line newer than the pinned ones, a PostgreSQL beta
+# or release candidate newer than CI's, and a newer JDBC driver. A job whose
+# release does not exist yet is skipped, and resolve says so in a notice.
+#
+# When a job fails, canary-issue opens a tracking issue, or comments on the one
+# already open. Run it by hand with "dry-run" to rehearse that issue: it then
+# runs whatever the results, finds the issue, and prints what it would write.
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Rehearse the canary issue (prints it, writes nothing), whatever the results
+        type: boolean
+        default: false
+
+permissions: {}
+
+# One canary run at a time; a run started while one is going waits for it.
+concurrency:
+  group: canary
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve:
+    name: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      python: ${{ steps.versions.outputs.python }}
+      pyspark: ${{ steps.versions.outputs.pyspark }}
+      pyspark-line: ${{ steps.versions.outputs.pyspark-line }}
+      postgres-image: ${{ steps.versions.outputs.postgres-image }}
+      postgres-major: ${{ steps.versions.outputs.postgres-major }}
+      pgjdbc: ${{ steps.versions.outputs.pgjdbc }}
+      spark-line: ${{ steps.versions.outputs.spark-line }}
+      spark-python: ${{ steps.versions.outputs.spark-python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - id: versions
+        run: |
+          uv python list --only-downloads --output-format json > "$RUNNER_TEMP/uv-pythons.json"
+          python3 scripts/canary_versions.py --uv-pythons "$RUNNER_TEMP/uv-pythons.json"
+
+  # The unit and property tests on the next Python, pre-release or not.
+  python-next:
+    name: python-next (Python ${{ needs.resolve.outputs.python }})
+    needs: resolve
+    if: needs.resolve.outputs.python != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PYTHON: ${{ needs.resolve.outputs.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: make py-unit PYTHON="$PYTHON"
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "python-next, Python $PYTHON" reports/junit-py-unit.xml
+
+  # The Spark tests on a PySpark line that is not pinned yet. It is installed
+  # from PyPI by version, without a hash: there is no pin to check it against.
+  pyspark-next:
+    name: pyspark-next (PySpark ${{ needs.resolve.outputs.pyspark }})
+    needs: resolve
+    if: needs.resolve.outputs.pyspark != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    services:
+      # GitHub-hosted runners accept no inbound connections, so trust
+      # authentication needs no stored password; the database is thrown away
+      # with the runner.
+      postgres:
+        image: postgres:18.7@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PYSPARK: ${{ needs.resolve.outputs.pyspark }}
+      SPARK: ${{ needs.resolve.outputs.pyspark-line }}
+      PYTHON: ${{ needs.resolve.outputs.spark-python }}
+      SKEWSPLIT_PG_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Use Java 21
+        run: |
+          [[ -n "${JAVA_HOME_21_X64:-}" ]]
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - run: make spark-e2e PYTHON="$PYTHON" SPARK="$SPARK" SPARK_INSTALL="pyspark==$PYSPARK"
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "pyspark-next, PySpark $PYSPARK" reports/junit-spark-e2e.xml
+
+  # The PostgreSQL tests against the next major version's beta or release
+  # candidate. resolve pins the image by digest. A service container would
+  # start before any step could check that, so a step starts it instead, and
+  # refuses an image that is not pinned.
+  postgres-next:
+    name: postgres-next (PostgreSQL ${{ needs.resolve.outputs.postgres-major }})
+    needs: resolve
+    if: needs.resolve.outputs.postgres-image != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      IMAGE: ${{ needs.resolve.outputs.postgres-image }}
+      POSTGRES: ${{ needs.resolve.outputs.postgres-major }}
+      SKEWSPLIT_PG_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # GitHub-hosted runners accept no inbound connections, so trust
+      # authentication needs no stored password; the database is thrown away
+      # with the runner.
+      - name: Start PostgreSQL ${{ needs.resolve.outputs.postgres-major }}
+        run: |
+          [[ "$IMAGE" =~ ^postgres:${POSTGRES}(beta|rc)[0-9]+@sha256:[0-9a-f]{64}$ ]]
+          docker run --detach --name postgres --env POSTGRES_HOST_AUTH_METHOD=trust \
+            --publish 5432:5432 --health-cmd "pg_isready -U postgres" --health-interval 5s "$IMAGE"
+          for _ in $(seq 60); do
+            if [[ "$(docker inspect --format '{{.State.Health.Status}}' postgres)" == healthy ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker logs postgres
+          exit 1
+      - name: Check the server version
+        run: |
+          version=$(psql "$SKEWSPLIT_PG_DSN" --no-psqlrc --tuples-only --no-align --command 'SHOW server_version_num')
+          echo "PostgreSQL $version"
+          [[ "$((version / 10000))" == "$POSTGRES" ]]
+      - run: make py-integration
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "postgres-next, PostgreSQL $POSTGRES" reports/junit-py-integration.xml
+
+  # The Spark tests with a JDBC driver newer than the Makefile's, on the newest
+  # pinned Spark line. Maven Central publishes a SHA-1 for the jar, not a
+  # SHA-256, so the jar is checked by SHA-1 here and the Makefile then checks
+  # it by the SHA-256 computed from it. The notice gives that SHA-256 for
+  # pinning the driver.
+  pgjdbc-next:
+    name: pgjdbc-next (driver ${{ needs.resolve.outputs.pgjdbc }})
+    needs: resolve
+    if: needs.resolve.outputs.pgjdbc != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    services:
+      # GitHub-hosted runners accept no inbound connections, so trust
+      # authentication needs no stored password; the database is thrown away
+      # with the runner.
+      postgres:
+        image: postgres:18.7@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGJDBC: ${{ needs.resolve.outputs.pgjdbc }}
+      SPARK: ${{ needs.resolve.outputs.spark-line }}
+      PYTHON: ${{ needs.resolve.outputs.spark-python }}
+      SKEWSPLIT_PG_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Use Java 21
+        run: |
+          [[ -n "${JAVA_HOME_21_X64:-}" ]]
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - name: Check the driver by SHA-1
+        run: |
+          jar="$RUNNER_TEMP/postgresql-$PGJDBC.jar"
+          url="https://repo1.maven.org/maven2/org/postgresql/postgresql/$PGJDBC/postgresql-$PGJDBC.jar"
+          curl -fsSL --retry 5 --retry-all-errors -o "$jar" "$url"
+          sha1=$(curl -fsSL --retry 5 --retry-all-errors "$url.sha1" | cut -c1-40)
+          echo "$sha1  $jar" | sha1sum --check --strict
+          sha256=$(sha256sum "$jar" | cut -c1-64)
+          echo "::notice title=JDBC driver $PGJDBC::SHA-256 $sha256"
+          echo "PGJDBC_SHA256=$sha256" >> "$GITHUB_ENV"
+      - run: make spark-e2e PYTHON="$PYTHON" SPARK="$SPARK" PGJDBC_VERSION="$PGJDBC" PGJDBC_SHA256="$PGJDBC_SHA256"
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "pgjdbc-next, driver $PGJDBC" reports/junit-spark-e2e.xml
+
+  # Opens the tracking issue when a job failed, or comments on it if it is
+  # open. With dry-run it always runs and writes nothing.
+  canary-issue:
+    name: canary issue
+    needs: [resolve, python-next, pyspark-next, postgres-next, pgjdbc-next]
+    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || inputs.dry-run) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # opens the tracking issue or comments on it
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+      RESOLVE: ${{ needs.resolve.result }}
+      PYTHON_RESULT: ${{ needs.python-next.result }}
+      PYTHON: ${{ needs.resolve.outputs.python }}
+      PYSPARK_RESULT: ${{ needs.pyspark-next.result }}
+      PYSPARK: ${{ needs.resolve.outputs.pyspark }}
+      POSTGRES_RESULT: ${{ needs.postgres-next.result }}
+      POSTGRES: ${{ needs.resolve.outputs.postgres-image }}
+      PGJDBC_RESULT: ${{ needs.pgjdbc-next.result }}
+      PGJDBC: ${{ needs.resolve.outputs.pgjdbc }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open or update the issue
+        run: |
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "The canary run tested skewsplit against releases that CI does not test yet: $RUN_URL"
+            echo
+            echo "| Job | Release | Result |"
+            echo "|-----|---------|--------|"
+            echo "| resolve | finds the releases | $RESOLVE |"
+            echo "| python-next | ${PYTHON:-none} | $PYTHON_RESULT |"
+            echo "| pyspark-next | ${PYSPARK:-none} | $PYSPARK_RESULT |"
+            echo "| postgres-next | ${POSTGRES:-none} | $POSTGRES_RESULT |"
+            echo "| pgjdbc-next | ${PGJDBC:-none} | $PGJDBC_RESULT |"
+          } > "$body"
+          args=(--title "The canary finds an upcoming release that fails the tests" --label type/ci --label area/ci --label status/triage --body-file "$body")
+          if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi
+          python3 scripts/tracking_issue.py "${args[@]}"

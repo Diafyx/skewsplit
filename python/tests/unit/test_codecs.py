@@ -11,7 +11,10 @@ from skewsplit.core import codecs
 from skewsplit.core.codecs import codec_for
 from skewsplit.core.errors import SpecError
 
-FIXTURES = Path(__file__).parents[3] / "spec" / "fixtures"
+# The nearest spec/ above, so a copy of the tests one folder deeper, as make
+# mutation runs them, finds it too.
+SPEC = next(path for path in Path(__file__).parents if (path / "spec").is_dir()) / "spec"
+FIXTURES = SPEC / "fixtures"
 # Digits of another script, which a regex using \d would accept.
 FULLWIDTH_ONE, FULLWIDTH_TWO = chr(0xFF11), chr(0xFF12)
 

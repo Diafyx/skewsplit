@@ -87,8 +87,21 @@ Use a throwaway database all the same.
 - `make conformance` runs every fixture against the Python core, plus the
   Hypothesis invariants of the spec (every value matches exactly one
   predicate, and so on), with the `ci` profile. The `conformance` CI job runs
-  it. `HYPOTHESIS_PROFILE` picks the profile: `dev` (default), `ci` or
-  `nightly`.
+  it. `HYPOTHESIS_PROFILE` picks the profile: `dev` (default), `ci`,
+  `nightly` or `fuzz`.
+- `make mutation` runs mutmut on the core, in about five minutes, and fails
+  when fewer than 90% of the tested mutants are killed. A mutant that times
+  out counts as not killed. The survivors are listed in
+  `reports/mutation-survivors.txt`.
+- **Nightly** (`nightly.yml`, every night and by hand) runs what is too slow
+  for a pull request:
+  - the whole CI suite, with Spark on every Python of each Spark line;
+  - `make property conformance` with the `nightly` profile, and the property
+    tests of each parser with `fuzz`;
+  - `make mutation`. When it fails, nightly opens an issue, or comments on the
+    one already open. Run the workflow by hand with `dry-run` to rehearse that
+    issue: it finds the issue and prints what it would write;
+  - `make links`, which requests every external link in the docs.
 - `make bench-core` times the planner. The `core-bench` job runs it when the
   core changes and reports the timings in its summary; it never gates.
 - Every `>>>` example in a Markdown file is run by the docs check.

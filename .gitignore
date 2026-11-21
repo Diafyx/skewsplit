@@ -226,3 +226,6 @@ __marimo__/
 reports/
 .venv-*/
 .benchmarks/
+
+# mutmut (make mutation)
+mutants/

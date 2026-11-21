@@ -44,3 +44,24 @@ skewsplit = "skewsplit.cli:main"
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14"]
 build-backend = "uv_build"
+
+# make mutation, which only nightly.yml runs, runs mutmut from this folder: it
+# names mutants by their path below src/, as the tests import them. It copies
+# src and the tests to mutants/, mutates the core, and runs pytest there.
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = ["src/skewsplit/core/*"]
+also_copy = ["tests"]
+pytest_add_cli_args = ["-p", "no:randomly"]
+pytest_add_cli_args_test_selection = [
+  "tests/property",
+  "tests/unit/postgres",
+  "tests/unit/test_api.py",
+  "tests/unit/test_cli.py",
+  "tests/unit/test_codecs.py",
+  "tests/unit/test_conformance.py",
+  "tests/unit/test_inputs.py",
+  "tests/unit/test_pgarray.py",
+  "tests/unit/test_plan.py",
+  "tests/unit/test_planner.py",
+]

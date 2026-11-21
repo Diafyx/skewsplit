@@ -47,6 +47,8 @@ lint = [
   "zizmor>=1.32; python_version>='3.11'",
 ]
 dev = [{ include-group = "test" }, { include-group = "lint" }]
+# Mutation testing of the core, which only nightly.yml runs (make mutation).
+mutation = ["mutmut>=3.8.1; python_version>='3.11'"]
 
 [tool.ruff]
 target-version = "py39"

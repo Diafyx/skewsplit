@@ -212,9 +212,12 @@ jobs:
         run: |
           [[ -n "${JAVA_HOME_21_X64:-}" ]]
           echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      # The jar goes where make pgjdbc looks for it, so make checks it by the
+      # SHA-256 and does not download it again.
       - name: Check the driver by SHA-1
         run: |
-          jar="$RUNNER_TEMP/postgresql-$PGJDBC.jar"
+          mkdir -p .pgjdbc
+          jar=".pgjdbc/postgresql-$PGJDBC.jar"
           url="https://repo1.maven.org/maven2/org/postgresql/postgresql/$PGJDBC/postgresql-$PGJDBC.jar"
           curl -fsSL --retry 5 --retry-all-errors -o "$jar" "$url"
           sha1=$(curl -fsSL --retry 5 --retry-all-errors "$url.sha1" | cut -c1-40)

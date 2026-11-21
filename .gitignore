@@ -229,3 +229,6 @@ reports/
 
 # mutmut (make mutation)
 mutants/
+
+# The JDBC driver for bench and spark-e2e (make pgjdbc)
+.pgjdbc/

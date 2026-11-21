@@ -51,6 +51,7 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
 | `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table |
+| `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads from `pg_stats`, as `skewsplit.plan` takes it |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
 | `skewsplit.postgres.Verification` | What `verify` found |
@@ -59,6 +60,37 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 `skewsplit.postgres` needs the `postgres` extra, which installs psycopg.
 `conn_or_dsn` is a libpq connection string or an open psycopg connection,
 which is left open and as it was.
+
+## Command line
+
+```text
+skewsplit plan   --table T --column C --partitions N [--format text|json]
+skewsplit verify --table T (--plan FILE | --column C --partitions N)
+                 [--counts] [--statement-timeout-ms MS] [--format text|json]
+skewsplit stats  --table T --column C [--partitions N]
+```
+
+- `plan` prints the predicates and the skew report, or the plan as JSON.
+- `verify` scans the table once to check that every row matches exactly one
+  predicate: those of a plan that `plan --format json` wrote (`--plan -`
+  reads it from standard input), or of a new plan. `--counts` also counts the
+  rows of each predicate, one query each, for the actual skew.
+- `stats` prints the column's distribution as JSON, which `skewsplit.plan`
+  takes. With `--partitions`, it is the complete planner input of the spec.
+
+Each command connects with `--dsn`, a libpq connection string or URI, or
+without it with the `PG*` environment variables. Keep a password in
+`PGPASSWORD` or `~/.pgpass` rather than on the command line, where other users
+can see it. Error messages hide the password of `--dsn` and of `PGPASSWORD`,
+and never quote a `--dsn` that is not valid.
+
+| Exit code | Meaning |
+|-----------|---------|
+| 0 | Success |
+| 1 | `verify` found rows that match no predicate, or more than one |
+| 2 | The command line is wrong, or `skewsplit[postgres]` is not installed |
+| 3 | The column cannot be planned (for example, it has no statistics), or the plan file is not valid |
+| 4 | The database could not be reached, or a query failed or timed out |
 
 ## Supported versions
 

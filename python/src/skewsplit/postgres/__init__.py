@@ -5,9 +5,10 @@ installs psycopg. psycopg also needs libpq; install ``psycopg[binary]`` as well
 if the system has none.
 
 :func:`plan` reads the column's statistics from ``pg_stats`` and never scans
-the table. :func:`verify` scans it once, to check that every row matches
-exactly one predicate. Both take a libpq connection string or an open
-connection, which they leave as it was.
+the table, and :func:`distribution` returns what it read, for
+:func:`skewsplit.plan`. :func:`verify` scans the table once, to check that
+every row matches exactly one predicate. They all take a libpq connection
+string or an open connection, which they leave as it was.
 
 >>> import psycopg
 >>> import skewsplit.postgres
@@ -37,6 +38,7 @@ except ModuleNotFoundError as error:
     raise ModuleNotFoundError(msg, name="psycopg") from error
 
 from skewsplit.postgres.catalog import CatalogError, CatalogErrorCode
+from skewsplit.postgres.statistics import distribution
 from skewsplit.postgres.statistics import plan_from_statistics as plan
 from skewsplit.postgres.verify import Verification, verify, verify_plan
 
@@ -44,6 +46,7 @@ __all__ = [
     "CatalogError",
     "CatalogErrorCode",
     "Verification",
+    "distribution",
     "plan",
     "verify",
     "verify_plan",

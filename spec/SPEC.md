@@ -640,3 +640,76 @@ remain and hold 4 × 12000000 / 4 - 1 × 12000000 / 4 = 9000000 rows.
 `special_values_left_out` with `rows` 6000000.
 
 The cases in `spec/fixtures/pg-stats/` check this section.
+
+### Reading the statistics
+
+An adapter reads everything in one transaction, with `DateStyle`, `TimeZone`
+and `extra_float_digits` set as above for that transaction only, and then
+rolls it back, so the caller's settings and transaction are left as they
+were. The table's *tree* is the table and, recursively, its partitions and
+inheritance children (`pg_inherits`).
+
+- With more than the table in the tree, the `pg_stats` row is the one with
+  `inherited` true, which describes the whole tree; otherwise the one with
+  `inherited` false.
+- `reltuples` lists `pg_class.reltuples` of every relation in the tree except
+  partitioned tables. Those store no rows, and since PostgreSQL 14 `ANALYZE`
+  gives them the total of their partitions, which would count rows twice.
+- `modified_since_analyze` is the table's `n_mod_since_analyze` from
+  `pg_stat_all_tables`, or `null` if it has none. For inherited statistics it
+  is `null`: PostgreSQL does not count the changes since a tree was analyzed
+  as a whole.
+
+It is an error, whose message suggests `ANALYZE`, when:
+
+- a relation in `reltuples` has `-1`, which means it was never vacuumed or
+  analyzed; or
+- there is no `pg_stats` row and `T` is above 0. Autovacuum never gathers
+  inherited statistics: it does not analyze partitioned tables, and changes to
+  inheritance children do not make it analyze their parent.
+
+With no `pg_stats` row and `T` of 0, the table was empty when it was last
+analyzed, and `ANALYZE` keeps no statistics for an empty table. The conversion
+input then has `null_frac` `0` and the three arrays `null`, and `reltuples`
+is `["0"]` if no relation in the tree stores rows. The plan has the warning
+`no_rows`.
+
+The adapter adds these fields to `source`:
+
+| Field | Meaning |
+|-------|---------|
+| `table` | The schema-qualified table name, quoted where SQL needs it |
+| `inherited` | Whether the statistics describe the whole tree |
+| `analyzed_at` | The later of `last_analyze` and `last_autoanalyze` from `pg_stat_all_tables`, in the text form of `timestamptz`, or `null` if PostgreSQL does not know |
+| `statistics_age_seconds` | Whole seconds from `analyzed_at` to the start of the reading transaction, by the server's clock, or `null` |
+| `n_distinct` | `pg_stats.n_distinct` as a JSON number: a count of distinct values or, when negative, minus their share of the rows (`-1` when every value is distinct). `null` without a `pg_stats` row |
+| `planning_ms` | The milliseconds spent finding the column, reading the statistics and planning, with at most 3 decimals |
+
+`planning_ms` and `statistics_age_seconds` differ from run to run, so they are
+not part of the contract of section 10 that two implementations give the same
+output.
+
+### Accuracy
+
+Section 3 spreads a bucket's rows evenly between its bounds, so the estimate
+of the rows below a value can be off by up to one bucket. When `ANALYZE` read
+every row, as it does for a table with no more rows and pages than 300 times
+the column's statistics target (30000 by default), the table has not changed
+since, and no value is special:
+
+- the NULL predicate and every value predicate are exact;
+- every range predicate reads within `2 × B` rows of its estimate, where
+  `B = ⌈H / m⌉` is the most rows of any bucket;
+- so the skew score of the rows the predicates actually read differs from the
+  estimated one by at most `2 × B × N / total_rows + 0.001` (each is rounded to
+  3 decimals).
+
+This holds because PostgreSQL takes bound `j` of `m` at position
+`⌊j × (n - 1) / m⌋` of the `n` sorted values that are not common values (all
+`H` of them, when every row was read). So for any value in bucket `i`, both the
+estimated and the actual rows below it lie between `(i - 1) × H / m` and
+`i × H / m`. When `ANALYZE` reads a sample, the sampling error comes on top.
+
+The PostgreSQL integration tests check these bounds on uniform, dominant-value,
+NULL-heavy and gapped columns, on dates and timestamps, and on partitioned and
+inheritance trees.

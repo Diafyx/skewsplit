@@ -17,7 +17,12 @@ if TYPE_CHECKING:
     import datetime as dt
 
 CatalogErrorCode = Literal[
-    "table_not_found", "not_a_table", "column_not_found", "unsupported_type", "permission_denied"
+    "table_not_found",
+    "not_a_table",
+    "column_not_found",
+    "unsupported_type",
+    "permission_denied",
+    "statistics_missing",
 ]
 
 # The fixed OIDs of the built-in types the planner can split (pg_type.dat).

@@ -66,6 +66,10 @@ DISTRIBUTIONS = {
 }
 
 
+# server_version of PostgreSQL 18.0, which changed ANALYZE on inheritance parents.
+POSTGRES_18 = 180000
+
+
 def flush_statistics(conn: psycopg.Connection[Any]) -> None:
     # This session's row counts reach the statistics system when it next goes
     # idle; this makes that happen after this statement (PostgreSQL 15 and later).
@@ -261,13 +265,18 @@ def test_inheritance_children(conn: psycopg.Connection[Any]) -> None:
     )
     run(conn, "INSERT INTO {p} SELECT g FROM generate_series(1, 4000) AS g", p="parent")
     run(conn, "INSERT INTO {c} SELECT g FROM generate_series(4001, 10000) AS g", c="child")
-    # ANALYZE on the parent gathers the statistics of the whole tree, but
-    # leaves the child's row count unknown.
-    run(conn, "ANALYZE {p}", p="parent")
+    # ANALYZE on the parent gathers the statistics of the whole tree. Before
+    # PostgreSQL 18 it leaves the child's row count unknown; since 18 it
+    # analyzes the child too, unless ONLY (new in 18) is given.
+    recursive = conn.info.server_version >= POSTGRES_18
+    run(conn, "ANALYZE ONLY {p}" if recursive else "ANALYZE {p}", p="parent")
     code, message = code_and_message(conn, "parent")
     assert code == "statistics_missing"
     assert message.endswith("has no row count for it; run ANALYZE on it")
-    run(conn, "ANALYZE {c}", c="child")
+    if recursive:
+        run(conn, "ANALYZE {p}", p="parent")
+    else:
+        run(conn, "ANALYZE {c}", c="child")
     result = plan_from_statistics(conn, "parent", "v", 4)
     source: Any = result.source
     assert source["inherited"] is True

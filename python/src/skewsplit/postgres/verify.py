@@ -151,8 +151,26 @@ def verify_plan(
         counts=counts,
         statement_timeout_ms=statement_timeout_ms,
     )
+    estimates = [(part.sql, part.estimated_rows) for part in plan.parts]
+    return verification_report(found, estimates, plan.requested_partitions, plan.skew_score)
+
+
+def verification_report(
+    found: Verification,
+    estimates: Sequence[tuple[str, int]],
+    partitions: int,
+    estimated_skew: float | None,
+) -> dict[str, object]:
+    """Report what :func:`verify` found next to a plan's estimates.
+
+    Args:
+        found: The result of verifying the plan's predicates, in order.
+        estimates: The SQL and the estimated rows of each predicate.
+        partitions: The plan's requested partitions, ``N`` of spec section 7.
+        estimated_skew: The plan's skew score.
+    """
     actual = found.predicate_rows
-    skew = found.skew_milli(plan.requested_partitions)
+    skew = found.skew_milli(partitions)
     return {
         "ok": found.ok,
         "table": found.table,
@@ -163,14 +181,14 @@ def verify_plan(
         },
         "predicates": [
             {
-                "sql": predicate.sql,
-                "estimated_rows": predicate.estimated_rows,
+                "sql": predicate,
+                "estimated_rows": rows,
                 "actual_rows": None if actual is None else actual[i],
             }
-            for i, predicate in enumerate(plan.parts)
+            for i, (predicate, rows) in enumerate(estimates)
         ],
         "skew_score": {
-            "estimated": plan.skew_score,
+            "estimated": estimated_skew,
             "actual": None if skew is None else skew / 1000,
         },
     }

@@ -21,19 +21,21 @@ def test_cli_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out == f"skewsplit {skewsplit.__version__}\n"
 
 
-def test_cli_without_arguments_succeeds() -> None:
-    assert main([]) == 0
+def test_cli_without_a_command_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main([])
+    assert exit_info.value.code == 2
 
 
 def test_cli_rejects_unknown_arguments(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        main(["--no-such-flag"])
+        main(["stats", "--table", "t", "--column", "c", "--no-such-flag"])
     assert exit_info.value.code == 2
     assert "unrecognized arguments: --no-such-flag" in capsys.readouterr().err
 
 
 def test_python_dash_m_runs_the_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["skewsplit"])
+    monkeypatch.setattr(sys, "argv", ["skewsplit", "--version"])
     with pytest.raises(SystemExit) as exit_info:
         runpy.run_module("skewsplit", run_name="__main__")
     assert exit_info.value.code == 0

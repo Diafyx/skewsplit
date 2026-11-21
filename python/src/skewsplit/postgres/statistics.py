@@ -20,7 +20,7 @@ from skewsplit.postgres.connection import connection
 if TYPE_CHECKING:
     import psycopg
 
-    from skewsplit.core.plan import Plan
+    from skewsplit.core.plan import JSON, Plan
 
 # The text forms of spec section 13, for the reading transaction only.
 _SETTINGS: Final = """
@@ -127,6 +127,27 @@ class Statistics:
         }
 
 
+def distribution(database: str | psycopg.Connection[Any], table: str, column: str) -> JSON:
+    """Return a column's distribution, from its ``pg_stats`` statistics.
+
+    It is the input of spec section 1 without ``partitions``, which is what
+    :func:`skewsplit.plan` takes, and its ``source`` says where it came from
+    (spec section 13).
+
+    Args:
+        database: A libpq connection string, or an open connection, which is
+            left open and with its settings and transaction as they were.
+        table: The table as SQL names it, as for :func:`find_column`.
+        column: The column's exact name, not quoted.
+
+    Raises:
+        CatalogError: If the column cannot be split or has no statistics.
+        SpecError: If the statistics do not convert into a valid input.
+    """
+    with connection(database) as conn:
+        return _distribution(conn, table, column)
+
+
 def plan_from_statistics(
     database: str | psycopg.Connection[Any], table: str, column: str, partitions: int
 ) -> Plan:
@@ -145,11 +166,10 @@ def plan_from_statistics(
     """
     with connection(database) as conn:
         start = perf_counter()
-        statistics = read_statistics(conn, find_column(conn, table, column))
-    data = from_pg_stats(statistics.conversion_input(partitions))
-    source = {**cast("dict[str, object]", data["source"]), **statistics.report()}
-    result = plan(data)
+        data = _distribution(conn, table, column)
+    result = plan({**data, "partitions": partitions})
     elapsed_ms = (perf_counter() - start) * 1000
+    source = cast("JSON", result.source)
     return replace(result, source={**source, "planning_ms": round(elapsed_ms, 3)})
 
 
@@ -209,6 +229,15 @@ def read_statistics(conn: psycopg.Connection[Any], column: Column) -> Statistics
         # PostgreSQL does not count changes since a tree was analyzed as a whole.
         modified_since_analyze=None if inherited else modified,
     )
+
+
+def _distribution(conn: psycopg.Connection[Any], table: str, column: str) -> JSON:
+    statistics = read_statistics(conn, find_column(conn, table, column))
+    # The conversion does not depend on the partitions; any valid number will do.
+    data = from_pg_stats(statistics.conversion_input(1))
+    del data["partitions"]
+    data["source"] = {**cast("JSON", data["source"]), **statistics.report()}
+    return data
 
 
 def _no_statistics(column: Column, *, inherited: bool) -> str:

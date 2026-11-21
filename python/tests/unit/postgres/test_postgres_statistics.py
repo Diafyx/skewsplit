@@ -17,7 +17,12 @@ from skewsplit.core.pgstats import from_pg_stats
 from skewsplit.core.planner import plan
 from skewsplit.postgres import statistics
 from skewsplit.postgres.catalog import CatalogError, Column
-from skewsplit.postgres.statistics import Statistics, plan_from_statistics, read_statistics
+from skewsplit.postgres.statistics import (
+    Statistics,
+    distribution,
+    plan_from_statistics,
+    read_statistics,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -278,3 +283,17 @@ def test_plan_from_statistics_checks_the_partitions(monkeypatch: pytest.MonkeyPa
     with pytest.raises(SpecError) as caught:
         plan_with(monkeypatch, 0)
     assert caught.value.code == "invalid_partitions"
+
+
+def test_the_distribution_is_the_input_without_partitions() -> None:
+    fake = FakeConnection(FIND_COLUMN_ROW, None, TABLE, FACTS, ROW)
+    found = distribution(cast("psycopg.Connection[Any]", fake), QUALIFIED, "id")
+    _, stats = read(TABLE, FACTS, ROW)
+    expected = from_pg_stats(stats.conversion_input(4))
+    assert "partitions" not in found
+    assert {**found, "partitions": 4, "source": None} == {**expected, "source": None}
+    assert found["source"] == {
+        **cast("dict[str, object]", expected["source"]),
+        **stats.report(),
+    }
+    assert plan({**found, "partitions": 4}).parts == plan(expected).parts

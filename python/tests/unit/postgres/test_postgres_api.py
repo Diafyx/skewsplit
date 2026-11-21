@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import skewsplit.postgres
 from skewsplit.postgres.catalog import CatalogError
-from skewsplit.postgres.statistics import plan_from_statistics
+from skewsplit.postgres.statistics import distribution, plan_from_statistics
 from skewsplit.postgres.verify import Verification, verify, verify_plan
 
 
@@ -16,11 +16,13 @@ def test_the_names_of_the_api() -> None:
         "CatalogError",
         "CatalogErrorCode",
         "Verification",
+        "distribution",
         "plan",
         "verify",
         "verify_plan",
     ]
     assert skewsplit.postgres.plan is plan_from_statistics
+    assert skewsplit.postgres.distribution is distribution
     assert skewsplit.postgres.verify is verify
     assert skewsplit.postgres.verify_plan is verify_plan
     assert skewsplit.postgres.Verification is Verification

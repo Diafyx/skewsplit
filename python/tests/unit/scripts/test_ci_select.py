@@ -15,13 +15,22 @@ ALL_JOBS = {
     "py-unit",
     "py-lowest",
     "py-integration",
+    "spark-e2e",
     "coverage",
     "packaging",
     "docs",
     "conformance",
     "core-bench",
 }
-PYTHON_JOBS = {"py-unit", "py-lowest", "py-integration", "coverage", "packaging", "conformance"}
+PYTHON_JOBS = {
+    "py-unit",
+    "py-lowest",
+    "py-integration",
+    "spark-e2e",
+    "coverage",
+    "packaging",
+    "conformance",
+}
 
 
 def running(selected: dict[str, bool]) -> set[str]:
@@ -97,7 +106,7 @@ def test_main_appends_to_github_output(
     assert main(["--event", "pull_request", "--groups", '["repo"]']) == 0
     written = output.read_text(encoding="utf-8")
     assert written.startswith("earlier=1\nlint=true\n")
-    skips = "py-unit,py-lowest,py-integration,coverage,packaging,docs,conformance"
+    skips = "py-unit,py-lowest,py-integration,spark-e2e,coverage,packaging,docs,conformance"
     assert f"allowed-skips={skips}\n" in written
     assert capsys.readouterr().out == written.removeprefix("earlier=1\n")
 
@@ -118,10 +127,9 @@ def test_main_rejects_values_that_are_not_lists_of_strings(value: str) -> None:
 
 def test_ci_workflow_has_every_selected_job_and_gates_all_but_the_ungated() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    outputs = set(
-        re.findall(r"^      ([a-z-]+): \$\{\{ steps\.select\.outputs\.\1 \}\}$", text, re.MULTILINE)
-    )
-    jobs = set(re.findall(r"^  ([a-z-]+):$", text, re.MULTILINE))
+    output = r"^      ([a-z0-9-]+): \$\{\{ steps\.select\.outputs\.\1 \}\}$"
+    outputs = set(re.findall(output, text, re.MULTILINE))
+    jobs = set(re.findall(r"^  ([a-z0-9-]+):$", text, re.MULTILINE))
     gate = re.search(r"^  ci-gate:\n(?:    .*\n)*?    needs: \[(.*)\]$", text, re.MULTILINE)
     assert gate is not None
     assert outputs == {*JOBS, "allowed-skips"}

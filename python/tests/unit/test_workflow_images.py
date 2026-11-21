@@ -30,7 +30,7 @@ def test_images_are_pinned_by_digest(workflow: Path) -> None:
 
 def test_the_postgres_images_are_found() -> None:
     images = _IMAGE.findall((WORKFLOWS[0].parent / "ci.yml").read_text(encoding="utf-8"))
-    assert sum(image.startswith("postgres:") for image in images) == 6
+    assert sum(image.startswith("postgres:") for image in images) == 7
 
 
 def test_unpinned_images_are_reported() -> None:

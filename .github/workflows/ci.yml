@@ -38,6 +38,7 @@ jobs:
       py-unit: ${{ steps.select.outputs.py-unit }}
       py-lowest: ${{ steps.select.outputs.py-lowest }}
       py-integration: ${{ steps.select.outputs.py-integration }}
+      spark-e2e: ${{ steps.select.outputs.spark-e2e }}
       coverage: ${{ steps.select.outputs.coverage }}
       packaging: ${{ steps.select.outputs.packaging }}
       docs: ${{ steps.select.outputs.docs }}
@@ -239,6 +240,109 @@ jobs:
           path: reports/junit-py-integration.xml
           retention-days: 7
 
+  # Spark reads PostgreSQL with the planned predicates, through the PySpark and
+  # Scala snippets (python/tests/spark/). Spark 3.5 supports Java 17 and Spark 4
+  # supports 17 and 21; each Spark line runs on its oldest and newest Python.
+  # PySpark comes from python/tests/spark/pyspark-<line>/requirements.txt.
+  spark-e2e:
+    name: spark-e2e (Spark ${{ matrix.spark }}, Python ${{ matrix.python }}, Java ${{ matrix.java }})
+    needs: changes
+    if: needs.changes.outputs.spark-e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - spark: "3.5"
+            python: "3.9"
+            java: "17"
+          - spark: "3.5"
+            python: "3.11"
+            java: "17"
+          - spark: "4.1"
+            python: "3.10"
+            java: "17"
+          - spark: "4.1"
+            python: "3.10"
+            java: "21"
+          - spark: "4.1"
+            python: "3.14"
+            java: "17"
+          - spark: "4.1"
+            python: "3.14"
+            java: "21"
+          - spark: "4.2"
+            python: "3.10"
+            java: "17"
+          - spark: "4.2"
+            python: "3.10"
+            java: "21"
+          - spark: "4.2"
+            python: "3.14"
+            java: "17"
+          - spark: "4.2"
+            python: "3.14"
+            java: "21"
+          - spark: "4.3"
+            python: "3.11"
+            java: "17"
+          - spark: "4.3"
+            python: "3.11"
+            java: "21"
+          - spark: "4.3"
+            python: "3.14"
+            java: "17"
+          - spark: "4.3"
+            python: "3.14"
+            java: "21"
+    services:
+      # GitHub-hosted runners accept no inbound connections, so trust
+      # authentication needs no stored password; the database is thrown away
+      # with the runner.
+      postgres:
+        image: postgres:18.7@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SPARK: ${{ matrix.spark }}
+      PYTHON: ${{ matrix.python }}
+      JAVA: ${{ matrix.java }}
+      SKEWSPLIT_PG_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            python/tests/spark/*/requirements.txt
+      # The runner image ships several JDKs, in JAVA_HOME_<version>_X64.
+      - name: Use Java ${{ matrix.java }}
+        run: |
+          home="JAVA_HOME_${JAVA}_X64"
+          [[ -n "${!home:-}" ]]
+          echo "JAVA_HOME=${!home}" >> "$GITHUB_ENV"
+      - run: make spark-e2e PYTHON="$PYTHON" SPARK="$SPARK"
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "spark-e2e, Spark $SPARK, Python $PYTHON, Java $JAVA" reports/junit-spark-e2e.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: junit-spark-e2e-${{ matrix.spark }}-${{ matrix.python }}-${{ matrix.java }}
+          path: reports/junit-spark-e2e.xml
+          retention-days: 7
+
   coverage:
     name: coverage
     needs: [changes, py-unit]
@@ -421,7 +525,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, lint, py-unit, py-lowest, py-integration, coverage, packaging, docs, conformance, pr-size]
+    needs: [changes, lint, py-unit, py-lowest, py-integration, spark-e2e, coverage, packaging, docs, conformance, pr-size]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

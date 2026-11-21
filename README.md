@@ -47,7 +47,7 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | Name | What it is |
 |------|------------|
 | `skewsplit.plan(distribution, partitions)` | Plans from a distribution you already have: the input of spec section 1, without `partitions` |
-| `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
+| `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
 | `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table |
@@ -64,13 +64,14 @@ which is left open and as it was.
 ## Command line
 
 ```text
-skewsplit plan   --table T --column C --partitions N [--format text|json]
+skewsplit plan   --table T --column C --partitions N [--format text|json|pyspark|scala]
 skewsplit verify --table T (--plan FILE | --column C --partitions N)
                  [--counts] [--statement-timeout-ms MS] [--format text|json]
 skewsplit stats  --table T --column C [--partitions N]
 ```
 
-- `plan` prints the predicates and the skew report, or the plan as JSON.
+- `plan` prints the predicates and the skew report, the plan as JSON, or
+  PySpark or Scala code that reads the table with the predicates.
 - `verify` scans the table once to check that every row matches exactly one
   predicate: those of a plan that `plan --format json` wrote (`--plan -`
   reads it from standard input), or of a new plan. `--counts` also counts the

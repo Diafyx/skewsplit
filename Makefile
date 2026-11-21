@@ -130,18 +130,22 @@ bench-core:
 	$(UV_RUN) pytest -m '' -p no:randomly --benchmark-enable \
 		--benchmark-json=$(REPORTS)/benchmark-core.json python/tests/unit/test_planner_benchmarks.py
 
+# The PostgreSQL JDBC driver that bench and spark-e2e give Spark, downloaded
+# from Maven Central and checked by hash. Dependabot cannot see it, so its
+# version and hash are pinned here only. $(call fetch-pgjdbc,PATH) downloads it.
+PGJDBC_VERSION := 42.7.14
+PGJDBC_SHA256 := 73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c
+PGJDBC_URL := https://repo1.maven.org/maven2/org/postgresql/postgresql/$(PGJDBC_VERSION)/postgresql-$(PGJDBC_VERSION).jar
+fetch-pgjdbc = curl -fsSL -o $(1) $(PGJDBC_URL) && echo "$(PGJDBC_SHA256)  $(1)" | sha256sum --check --strict
+
 # The Spark benchmark (bench/README.md): build the skewed table, read it in each
 # way, and write $(REPORTS)/RESULTS.md. PySpark goes into its own environment
-# from bench/requirements.txt, and the PostgreSQL JDBC driver is downloaded
-# from Maven Central; both are checked by hash. Dependabot cannot see the
-# driver, so its version and hash are pinned here only.
+# from bench/requirements.txt, checked by hash, and Spark gets the driver above.
 BENCH_ROWS ?= 15000000
 BENCH_PARTITIONS ?= 16
 BENCH_RUNS ?= 3
 BENCH_PYTHON := 3.14
 BENCH_VENV := .venv-bench
-PGJDBC_VERSION := 42.7.14
-PGJDBC_SHA256 := 73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c
 PGJDBC_JAR := $(BENCH_VENV)/postgresql-$(PGJDBC_VERSION).jar
 bench:
 	@if [[ -z "$${PGHOST:-}" || -z "$${JAVA_HOME:-}" ]]; then \
@@ -153,9 +157,7 @@ bench:
 	rm -rf $(BENCH_VENV)
 	uv venv --quiet --python $(BENCH_PYTHON) $(BENCH_VENV)
 	uv pip install --quiet --python $(BENCH_VENV) --require-hashes -r bench/requirements.txt
-	curl -fsSL -o $(PGJDBC_JAR) \
-		https://repo1.maven.org/maven2/org/postgresql/postgresql/$(PGJDBC_VERSION)/postgresql-$(PGJDBC_VERSION).jar
-	echo "$(PGJDBC_SHA256)  $(PGJDBC_JAR)" | sha256sum --check --strict
+	$(call fetch-pgjdbc,$(PGJDBC_JAR))
 	psql -v rows=$(BENCH_ROWS) -f bench/skewed_table.sql
 	$(BENCH_VENV)/bin/python bench/run.py --jdbc-jar $(PGJDBC_JAR) \
 		--partitions $(BENCH_PARTITIONS) --runs $(BENCH_RUNS) $(REPORTS)/bench.json
@@ -180,13 +182,26 @@ py-integration:
 	mkdir -p $(REPORTS)
 	$(UV_RUN) coverage run -m pytest -m integration --junitxml=$(REPORTS)/junit-py-integration.xml
 
+# The Spark tests (python/tests/spark/) with one Spark line, SPARK, in an
+# environment of their own: the locked project and test tools, then PySpark
+# from python/tests/spark/pyspark-$(SPARK)/requirements.txt, checked by hash.
+SPARK ?= 4.3
+SPARK_VENV := .venv-spark
+SPARK_REQUIREMENTS := python/tests/spark/pyspark-$(SPARK)/requirements.txt
+SPARK_JDBC_JAR := $(SPARK_VENV)/postgresql-$(PGJDBC_VERSION).jar
 spark-e2e:
 	@if [[ -z "$${SKEWSPLIT_PG_DSN:-}" || -z "$${JAVA_HOME:-}" ]]; then \
 		echo "spark-e2e needs PostgreSQL and Java (set SKEWSPLIT_PG_DSN and JAVA_HOME). It runs in CI only."; \
 		exit 1; \
 	fi
+	[[ -f $(SPARK_REQUIREMENTS) ]]
 	mkdir -p $(REPORTS)
-	$(UV_RUN) pytest -m spark --junitxml=$(REPORTS)/junit-spark-e2e.xml
+	rm -rf $(SPARK_VENV)
+	UV_PROJECT_ENVIRONMENT=$(SPARK_VENV) uv sync --frozen --quiet --python $(PYTHON)
+	uv pip install --quiet --python $(SPARK_VENV) --require-hashes -r $(SPARK_REQUIREMENTS)
+	$(call fetch-pgjdbc,$(SPARK_JDBC_JAR))
+	SKEWSPLIT_SPARK=$(SPARK) SKEWSPLIT_PGJDBC_JAR=$(abspath $(SPARK_JDBC_JAR)) \
+		$(SPARK_VENV)/bin/python -m pytest -m spark --junitxml=$(REPORTS)/junit-spark-e2e.xml
 
 # The size label for the changes since $(COMPARE). PR_BODY names a file with
 # the pull request description, which a size/XXL change must justify.
@@ -200,5 +215,5 @@ pr-hygiene:
 	$(SCRIPT) scripts/pr_hygiene.py
 
 clean:
-	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) \
+	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) $(SPARK_VENV) \
 		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks

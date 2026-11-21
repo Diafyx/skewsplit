@@ -188,10 +188,92 @@ class Plan:
         """
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False, allow_nan=False)
 
+    def to_pyspark(self) -> str:
+        """Return PySpark code that reads a table with these predicates.
+
+        ``spark``, ``url``, ``table`` and ``properties`` are yours: the
+        session, the JDBC URL, the table and the connection properties, such
+        as the user and password. Each predicate is a Python string literal.
+        """
+        return "\n".join(
+            [
+                f"# {self._snippet_summary()}",
+                _SNIPPET_NOTE.format(comment="#"),
+                "predicates = [",
+                *(f"    {part.sql!r}," for part in self.parts),
+                "]",
+                "df = spark.read.jdbc(url, table, predicates=predicates, properties=properties)",
+            ]
+        )
+
+    def to_scala(self) -> str:
+        """Return Scala code that reads a table with these predicates.
+
+        As for :meth:`to_pyspark`; each predicate is a Scala string literal
+        that Scala 2.12, 2.13 and 3 read the same way.
+        """
+        return "\n".join(
+            [
+                f"// {self._snippet_summary()}",
+                _SNIPPET_NOTE.format(comment="//"),
+                "val predicates = Array(",
+                ",\n".join(f"  {_scala_string(part.sql)}" for part in self.parts),
+                ")",
+                "val df = spark.read.jdbc(url, table, predicates, properties)",
+            ]
+        )
+
+    def _snippet_summary(self) -> str:
+        # Nothing from the column goes into a comment, where a line break in
+        # its name would end the comment.
+        skew = "no skew score"
+        if self.skew_milli is not None:
+            skew = f"an estimated skew score of {self.skew_milli / 1000:.3f}"
+        return (
+            f"skewsplit: {self.planned_partitions} of {self.requested_partitions} partitions"
+            f" plus one for NULL, with {skew}"
+        )
+
 
 def error_dict(error: SpecError) -> JSON:
     """Return an error as the JSON object of spec section 10."""
     return {"spec_version": SPEC_VERSION, "error": {"code": error.code, "message": error.message}}
+
+
+_SNIPPET_NOTE: Final = (
+    "{comment} spark, url, table and properties are yours: the session, the JDBC URL, the table,"
+    "\n{comment} and the connection properties such as the user and password."
+)
+
+# The escapes of a Scala string literal. Scala 2.12 reads \u escapes before
+# anything else, even inside a string, so " would end the string there:
+# these characters always get their named escape, and \u is used only for
+# characters that are not printable. A backslash in the text is doubled, so a
+# \u in the text never starts an escape.
+_SCALA_ESCAPES: Final = {
+    '"': '\\"',
+    "\\": "\\\\",
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+    "\b": "\\b",
+    "\f": "\\f",
+}
+
+
+def _scala_string(text: str) -> str:
+    """Return ``text`` as a Scala string literal, with only printable characters."""
+    out = []
+    for char in text:
+        if char in _SCALA_ESCAPES:
+            out.append(_SCALA_ESCAPES[char])
+        elif char.isprintable():
+            out.append(char)
+        else:
+            # Scala strings are UTF-16: a character above U+FFFF is two units.
+            units = char.encode("utf-16-be", "surrogatepass")
+            out.extend(f"\\u{units[i]:02x}{units[i + 1]:02x}" for i in range(0, len(units), 2))
+    return '"' + "".join(out) + '"'
 
 
 def _source_warnings(source: object) -> list[tuple[str, str]]:

@@ -78,3 +78,31 @@ updates:
       - "dependencies"
       - "type/build"
       - "area/bench"
+
+  # PySpark for the spark-e2e job, pinned by hash, in one folder per Spark
+  # line. Each folder takes patch releases only: a new Spark line gets a new
+  # folder and its own CI legs. PySpark declares the py4j range it needs, so
+  # py4j is updated by hand with it.
+  - package-ecosystem: "pip"
+    directories:
+      - "/python/tests/spark/pyspark-3.5"
+      - "/python/tests/spark/pyspark-4.1"
+      - "/python/tests/spark/pyspark-4.2"
+      - "/python/tests/spark/pyspark-4.3"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "pyspark"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "py4j"
+    groups:
+      spark:
+        update-types: ["patch"]
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "type/build"
+      - "area/spark"

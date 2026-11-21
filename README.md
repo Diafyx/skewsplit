@@ -39,6 +39,27 @@ The first release, python v0.1.0, is planned to:
 The predicates will contain real values from the column, so treat the output
 like the data it describes.
 
+## Python API
+
+These names, the `__all__` of `skewsplit` and `skewsplit.postgres`, are the
+API. The planner's input and output are defined in the [spec](spec/SPEC.md).
+
+| Name | What it is |
+|------|------------|
+| `skewsplit.plan(distribution, partitions)` | Plans from a distribution you already have: the input of spec section 1, without `partitions` |
+| `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
+| `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
+| `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table |
+| `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
+| `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
+| `skewsplit.postgres.Verification` | What `verify` found |
+| `skewsplit.postgres.CatalogError`, `skewsplit.postgres.CatalogErrorCode` | The table or column cannot be planned, with a `code` such as `statistics_missing` |
+
+`skewsplit.postgres` needs the `postgres` extra, which installs psycopg.
+`conn_or_dsn` is a libpq connection string or an open psycopg connection,
+which is left open and as it was.
+
 ## Supported versions
 
 <!-- supported-versions:start -->

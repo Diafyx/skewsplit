@@ -86,7 +86,7 @@ def probes(codec: Codec, result: Plan, data: dict[str, Any], extra: list[int]) -
     """The type limits, every input value and boundary with its neighbours, and more."""
     points = {codec.min_ordinal, codec.max_ordinal, *extra}
     texts = [m["value"] for m in data["mcv"]] + (data["histogram"] or {"bounds": []})["bounds"]
-    for predicate in result.predicates:
+    for predicate in result.parts:
         texts += [b.value for b in (predicate.lower, predicate.upper) if b is not None]
     for ordinal in map(codec.parse, texts):
         points.update({ordinal - 1, ordinal, ordinal + 1})
@@ -97,10 +97,10 @@ def probes(codec: Codec, result: Plan, data: dict[str, Any], extra: list[int]) -
 def test_every_value_matches_exactly_one_predicate(data: dict[str, Any], extra: list[int]) -> None:
     result = plan(data)
     codec = codec_for(data["type"], data.get("scale"))
-    assert [p.kind for p in result.predicates].count("null") == 1
-    assert result.predicates[0].kind == "null"
+    assert [p.kind for p in result.parts].count("null") == 1
+    assert result.parts[0].kind == "null"
     for ordinal in probes(codec, result, data, extra):
-        hits = [p.sql for p in result.predicates if matches(codec, p, ordinal)]
+        hits = [p.sql for p in result.parts if matches(codec, p, ordinal)]
         assert len(hits) == 1, (codec.text(ordinal), hits)
 
 
@@ -115,7 +115,7 @@ def test_the_sql_reads_every_row_exactly_once(data: dict[str, Any], extra: list[
         db.execute(f"CREATE TABLE t ({column} INTEGER)")
         db.executemany("INSERT INTO t VALUES (?)", [(row,) for row in rows])
         hits: list[int] = []
-        for predicate in result.predicates:
+        for predicate in result.parts:
             query = f"SELECT rowid FROM t WHERE {predicate.sql}"  # noqa: S608 -- the plan's own SQL
             hits += [rowid for (rowid,) in db.execute(query)]
     assert sorted(hits) == list(range(1, len(rows) + 1))
@@ -126,19 +126,19 @@ def test_the_plan_is_consistent(data: dict[str, Any]) -> None:
     result = plan(data)
     n = data["partitions"]
     codes = [w.code for w in result.warnings]
-    estimates = [p.estimated_rows for p in result.predicates]
+    estimates = [p.estimated_rows for p in result.parts]
     # Partitions: never more than N, and fewer only with a warning that says so.
     assert 1 <= result.planned_partitions <= n
     assert ("fewer_partitions" in codes) == (result.planned_partitions < n)
     # Rows: the estimates add up, and every dominant value has its own predicate.
     assert min(estimates) >= 0
     assert sum(estimates) == result.total_rows
-    values = [p.value for p in result.predicates if p.kind == "value"]
+    values = [p.value for p in result.parts if p.kind == "value"]
     assert values == [w.value for w in result.warnings if w.code == "dominant_value"]
     assert len(values) <= (n - 1) // 2
     # 4.3: in a segment with more than one range, every range holds a row.
     segments: list[list[int]] = [[]]
-    for predicate in result.predicates[1:]:
+    for predicate in result.parts[1:]:
         if predicate.kind == "value":
             segments.append([])
         else:
@@ -158,4 +158,4 @@ def test_the_order_of_common_values_does_not_matter(
     data: dict[str, Any], rng: random.Random
 ) -> None:
     shuffled = {**data, "mcv": rng.sample(data["mcv"], len(data["mcv"]))}
-    assert plan(shuffled).to_json() == plan(data).to_json()
+    assert plan(shuffled).to_dict() == plan(data).to_dict()

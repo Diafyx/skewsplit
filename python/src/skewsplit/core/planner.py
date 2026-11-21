@@ -11,7 +11,7 @@
 ...         "histogram": {"bounds": ["1", "101"], "rows": 100},
 ...     }
 ... )
->>> [p.sql for p in result.predicates]
+>>> result.predicates
 ['"id" IS NULL', '"id" < 51', '"id" >= 51']
 """
 
@@ -141,7 +141,7 @@ def plan_input(inp: PlanInput) -> Plan:
         requested_partitions=n,
         null_rows=inp.null_rows,
         total_rows=total,
-        predicates=tuple(predicates),
+        parts=tuple(predicates),
         skew_milli=skew,
         warnings=tuple(warnings),
         source=inp.source,

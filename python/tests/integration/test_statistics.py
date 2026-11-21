@@ -124,11 +124,11 @@ def check_accuracy(conn: psycopg.Connection[Any], table: str, plan: Plan) -> Non
     histogram: Any = from_pg_stats(stats.conversion_input(partitions))["histogram"]
     # B: the most rows of any bucket, ceil(H / m).
     bucket = 0 if histogram is None else -(-histogram["rows"] // (len(histogram["bounds"]) - 1))
-    actual = [count(conn, table, predicate.sql) for predicate in plan.predicates]
+    actual = [count(conn, table, predicate.sql) for predicate in plan.parts]
     total = count(conn, table, "true")
     # Every row exactly once, and the row counts are exact.
     assert sum(actual) == total == plan.total_rows
-    for predicate, rows in zip(plan.predicates, actual):
+    for predicate, rows in zip(plan.parts, actual):
         if predicate.kind == "range":
             assert abs(rows - predicate.estimated_rows) <= 2 * bucket, predicate.sql
         else:
@@ -156,7 +156,7 @@ def test_the_warnings_of_skewed_columns(conn: psycopg.Connection[Any]) -> None:
     assert [(w.code, w.value, w.rows) for w in dominant.warnings] == [
         ("dominant_value", "42", 12000)
     ]
-    assert dominant.predicates[1].sql == '"v" < 42'
+    assert dominant.parts[1].sql == '"v" < 42'
     nulls = plan_from_statistics(conn, "null_heavy", "v", 4)
     assert [(w.code, w.rows) for w in nulls.warnings] == [("nulls_exceed_share", 18000)]
 
@@ -192,7 +192,7 @@ def test_special_values_are_left_out_but_still_read(conn: psycopg.Connection[Any
     assert source["unestimated_rows"] == 6000
     assert [w["code"] for w in source["warnings"]] == ["special_values_left_out"]
     assert result.total_rows == 24000
-    actual = [count(conn, "infinite", predicate.sql) for predicate in result.predicates]
+    actual = [count(conn, "infinite", predicate.sql) for predicate in result.parts]
     assert sum(actual) == 30000
 
 
@@ -346,7 +346,7 @@ def test_the_callers_settings_and_transaction_are_kept(database: Database) -> No
         caller.execute("SET extra_float_digits = -3")
         assert caller.info.transaction_status == TransactionStatus.INTRANS
         result = plan_from_statistics(caller, f"{database.schema}.timestamptzs", "v", 8)
-        assert result.predicates == expected.predicates
+        assert result.parts == expected.parts
         assert caller.info.transaction_status == TransactionStatus.INTRANS
         settings = caller.execute(
             "SELECT current_setting('DateStyle'), current_setting('TimeZone'),"

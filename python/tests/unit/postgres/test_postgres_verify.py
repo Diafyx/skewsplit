@@ -180,7 +180,7 @@ def test_verify_plan_reports_actual_rows_next_to_the_estimates() -> None:
         "rows": {"total": 1060, "unmatched": 0, "overlapping": 0},
         "predicates": [
             {"sql": predicate.sql, "estimated_rows": predicate.estimated_rows, "actual_rows": rows}
-            for predicate, rows in zip(planned.predicates, [100, 80, 500, 190, 190])
+            for predicate, rows in zip(planned.parts, [100, 80, 500, 190, 190])
         ],
         "skew_score": {"estimated": 1.887, "actual": 1.887},
     }

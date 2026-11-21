@@ -340,8 +340,18 @@ predicate. The estimates can be wrong; the coverage cannot.
 only `= 42`, value 43 only `> 42 AND < 520`, value 520 only `>= 520`, and NULL
 only `IS NULL`.
 
-Verify mode checks the same property against the real table by counting rows
-that match no predicate or more than one.
+Verify mode checks the same property against the real table. It counts all
+rows, the rows that match no predicate, and the rows that match more than one;
+a predicate that is NULL for a row does not match it, as in a WHERE clause.
+The plan is correct when both of the latter counts are 0, and an adapter
+reports any other result as a failure.
+
+**Cost.** The check is one full scan of the table that evaluates every
+predicate on every row. Counting each predicate's rows, for the actual skew
+score, adds one query per predicate, which can use an index on the column;
+together they read the table about once more. The predicates run in a
+read-only transaction that is rolled back, and a `statement_timeout` can bound
+each query.
 
 ## 7. Skew score
 

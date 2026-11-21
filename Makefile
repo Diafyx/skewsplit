@@ -136,9 +136,11 @@ property:
 # Mutation testing of the core with mutmut, which nightly.yml runs. mutmut runs
 # from python/, where its config is (see python/pyproject.toml), and starts
 # from a clean mutants/ so no result of an earlier run is reused. Fails when
-# fewer than MUTATION_MIN percent of the tested mutants are killed.
+# fewer than MUTATION_MIN percent of the tested mutants are killed. From
+# python/, the current project is the skewsplit workspace member, which has no
+# default groups, so the test tools need --group dev as well.
 MUTATION_MIN ?= 90
-MUTMUT := cd python && $(UV_RUN) --group mutation mutmut
+MUTMUT := cd python && $(UV_RUN) --group dev --group mutation mutmut
 mutation:
 	mkdir -p $(REPORTS)
 	rm -rf python/mutants

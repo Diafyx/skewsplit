@@ -31,6 +31,7 @@ Contents:
 14. [Distribution from a sample](#14-distribution-from-a-sample)
 15. [Exact quantiles](#15-exact-quantiles)
 16. [Hash predicates](#16-hash-predicates)
+17. [Choosing a strategy](#17-choosing-a-strategy)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point, apart
@@ -499,7 +500,7 @@ A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
 | Version | Change |
 |---------|--------|
 | 1.0 | The first version |
-| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order |
+| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order. [Section 17](#17-choosing-a-strategy): choosing a strategy |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Once a release
@@ -1035,3 +1036,37 @@ The skew score is (2 × 250 × 4 × 1000 + 1010) / 2020 / 1000 = 0.990, and the
 warning is `full_scans`.
 
 The cases in `spec/fixtures/hash/` check this section.
+
+## 17. Choosing a strategy
+
+An adapter can choose the strategy itself: the cheapest one that gives a plan
+to trust. The statistics of section 13 cost a few catalog queries, a sample
+(section 14) about as many rows as it reads, and hash predicates
+(section 16) one count, with a full scan for every partition of the read.
+Exact quantiles (section 15) are never chosen: only the caller knows when
+reading every row is worth it.
+
+The first row of this table that applies chooses:
+
+| Reason | When | Strategy |
+|--------|------|----------|
+| `unsupported_type` | The column's type is not in section 2, and the caller did not ask for ranges | hash predicates |
+| `statistics_missing` | Reading the statistics fails with the error that `ANALYZE` must run first (section 13, Reading the statistics) | sample |
+| `statistics_stale` | The converted statistics have the warning `stale_statistics`: more than a tenth of the rows changed since `ANALYZE` | sample |
+| `statistics_unchecked` | `modified_since_analyze` is `null`, so the changes since `ANALYZE` are not known, as for a table with partitions or inheritance children | sample |
+| `statistics_fresh` | Otherwise | statistics |
+
+When the caller asked for ranges, a type not in section 2 is the error
+`unsupported_type`, as for the other strategies. The thresholds are those of
+section 13, so `auto` reads a sample exactly when the statistics would warn,
+or could not tell.
+
+The plan's `source` is the chosen strategy's, with one more field:
+
+```json
+"auto": {"strategy": "sample", "reason": "statistics_stale", "message": "..."}
+```
+
+`strategy` is `statistics`, `sample` or `hash`, and `reason` is the row of the
+table. As elsewhere, the message wording is not part of the contract.
+`planning_ms` includes the time spent choosing.

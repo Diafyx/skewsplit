@@ -380,7 +380,10 @@ def test_the_sample_strategy_passes_its_options(calls: list[tuple[object, ...]])
 @pytest.mark.parametrize(
     ("options", "message"),
     [
-        ({"strategy": "fast"}, "strategy must be one of statistics, sample, exact, not 'fast'"),
+        (
+            {"strategy": "fast"},
+            "strategy must be one of statistics, sample, exact, auto, not 'fast'",
+        ),
         ({"sample_rows": 5}, "sample_rows, max_sample_rows and seed are for strategy='sample'"),
         ({"max_sample_rows": 5}, "are for strategy='sample'"),
         ({"seed": 0}, "are for strategy='sample'"),

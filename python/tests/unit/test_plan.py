@@ -141,6 +141,33 @@ def test_only_a_plan_from_a_sample_has_the_sample_line(source: object) -> None:
     assert lines[1].endswith("  predicate")
 
 
+def test_the_report_names_the_strategy_auto_chose_and_why() -> None:
+    choice = {"strategy": "sample", "reason": "statistics_stale", "message": "300 rows changed"}
+    source = {"auto": choice, "sample_rows": 30012, "planning_ms": 5}
+    lines = replace(plan(SECTION_1), source=source).report.splitlines()
+    assert lines[1:4] == [
+        "strategy sample, chosen by auto: 300 rows changed",
+        "from a sample of 30012 rows, planned in 5.000 ms",
+        "rows  predicate",
+    ]
+
+
+@pytest.mark.parametrize(
+    "auto",
+    [
+        None,
+        "sample",
+        {"strategy": "sample"},
+        {"message": "why"},
+        {"strategy": 1, "message": "why"},
+        {"strategy": "sample", "message": None},
+    ],
+)
+def test_only_a_choice_with_a_strategy_and_a_message_has_the_auto_line(auto: object) -> None:
+    lines = replace(plan(SECTION_1), source={"auto": auto}).report.splitlines()
+    assert lines[1].endswith("  predicate")
+
+
 def test_to_json_is_to_dict_as_json_text() -> None:
     result = plan({**SECTION_1, "column": "größe", "source": {"table": "Straße"}})
     text = result.to_json()

@@ -140,8 +140,9 @@ class Plan:
     def report(self) -> str:
         """The skew report, as text for people.
 
-        A summary line, a line on the sample for a plan from one (spec
-        section 14), each predicate with its estimated rows, and then a line
+        A summary line, a line on the strategy that ``auto`` chose (spec
+        section 17), a line on the sample for a plan from one (section 14),
+        each predicate with its estimated rows, and then a line
         for each warning: the plan's, followed by those in
         ``source["warnings"]``, which the adapters of spec sections 13 to 15
         add. The layout may change; read :meth:`to_dict` in code.
@@ -156,7 +157,12 @@ class Plan:
             f" plus one for NULL, {skew}"
         )
         width = max(len("rows"), *(len(str(part.estimated_rows)) for part in self.parts))
-        lines = [summary, *_sample_line(self.source), f"{'rows':>{width}}  predicate"]
+        lines = [
+            summary,
+            *_auto_line(self.source),
+            *_sample_line(self.source),
+            f"{'rows':>{width}}  predicate",
+        ]
         lines.extend(f"{part.estimated_rows:>{width}}  {part.sql}" for part in self.parts)
         warnings: list[tuple[str, str]] = [(w.code, w.message) for w in self.warnings]
         warnings += _source_warnings(self.source)
@@ -280,6 +286,17 @@ def _scala_string(text: str) -> str:
             units = char.encode("utf-16-be", "surrogatepass")
             out.extend(f"\\u{units[i]:02x}{units[i + 1]:02x}" for i in range(0, len(units), 2))
     return '"' + "".join(out) + '"'
+
+
+def _auto_line(source: object) -> list[str]:
+    """Name the strategy that ``auto`` chose and why (spec section 17), if it chose one."""
+    choice = source.get("auto") if isinstance(source, dict) else None
+    if not isinstance(choice, dict):
+        return []
+    strategy, message = choice.get("strategy"), choice.get("message")
+    if not isinstance(strategy, str) or not isinstance(message, str):
+        return []
+    return [f"strategy {strategy}, chosen by auto: {message}"]
 
 
 def _sample_line(source: object) -> list[str]:

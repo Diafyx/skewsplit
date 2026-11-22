@@ -5,12 +5,15 @@
 when the statistics are missing or out of date. ``exact`` reads every row
 (section 15), for when accuracy matters more than planning time.
 ``method="hash"`` plans hash predicates for a column of any type (section 16).
+``auto`` chooses among the statistics, a sample and hash predicates (section
+17), and the plan says which and why.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from skewsplit.postgres.auto import auto_distribution, plan_auto
 from skewsplit.postgres.exact import exact_distribution, plan_from_exact
 from skewsplit.postgres.hashing import plan_from_hash
 from skewsplit.postgres.sample import DEFAULT_SAMPLE_ROWS, plan_from_sample, sample_distribution
@@ -22,8 +25,10 @@ if TYPE_CHECKING:
 
     from skewsplit.core.plan import JSON, Plan
 
-Strategy = Literal["statistics", "sample", "exact"]
-STRATEGIES: Final[tuple[Strategy, ...]] = ("statistics", "sample", "exact")
+Strategy = Literal["statistics", "sample", "exact", "auto"]
+STRATEGIES: Final[tuple[Strategy, ...]] = ("statistics", "sample", "exact", "auto")
+# The strategies that may read a sample, so take its options.
+_SAMPLING: Final = ("sample", "auto")
 Method = Literal["range", "hash"]
 METHODS: Final[tuple[Method, ...]] = ("range", "hash")
 
@@ -50,14 +55,16 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
         table: The table as SQL names it, as for :func:`find_column`.
         column: The column's exact name, not quoted.
         strategy: ``statistics`` to read ``pg_stats``, ``sample`` to read a
-            sample of the table, or ``exact`` to read every row: it scans the
-            whole table three times and sorts the column.
-        sample_rows: For ``sample``: about how many rows to sample, 30000 by
-            default.
-        max_sample_rows: For ``sample``: the most rows the sample may read,
-            10 times ``sample_rows`` by default.
-        seed: For ``sample``: a ``REPEATABLE`` seed, so that the same table
-            gives the same sample.
+            sample of the table, ``exact`` to read every row: it scans the
+            whole table three times and sorts the column; or ``auto`` to use
+            the statistics when they are fresh and a sample otherwise (spec
+            section 17), which ``source["auto"]`` explains.
+        sample_rows: For ``sample`` and ``auto``: about how many rows to
+            sample, 30000 by default.
+        max_sample_rows: For ``sample`` and ``auto``: the most rows the
+            sample may read, 10 times ``sample_rows`` by default.
+        seed: For ``sample`` and ``auto``: a ``REPEATABLE`` seed, so that the
+            same table gives the same sample.
         statement_timeout_ms: A ``statement_timeout`` for each query that
             reads the statistics or the table, in milliseconds.
 
@@ -70,6 +77,16 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
         psycopg.Error: If a query fails or was cancelled by the timeout.
     """
     chosen = _strategy(strategy, sample_rows, max_sample_rows, seed)
+    if chosen == "auto":
+        return auto_distribution(
+            database,
+            table,
+            column,
+            sample_rows=sample_rows,
+            max_sample_rows=max_sample_rows,
+            seed=seed,
+            statement_timeout_ms=statement_timeout_ms,
+        )
     if chosen == "exact":
         return exact_distribution(
             database, table, column, statement_timeout_ms=statement_timeout_ms
@@ -95,7 +112,7 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     column: str,
     partitions: int,
     *,
-    method: Method = "range",
+    method: Method | None = None,
     strategy: Strategy | None = None,
     sample_rows: int | None = None,
     max_sample_rows: int | None = None,
@@ -113,8 +130,11 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     16), for a column of any type, such as ``text`` or ``uuid``. It counts
     the rows with one query and takes no ``strategy``. No index can serve
     hash predicates, so each partition's query reads the whole table.
+    ``method="range"`` plans ranges only. Without a method, ranges are
+    planned, except that ``strategy="auto"`` plans hash predicates for a
+    column that ranges cannot split.
     """
-    if method not in METHODS:
+    if method is not None and method not in METHODS:
         msg = f"method must be one of {', '.join(METHODS)}, not {method!r}"
         raise ValueError(msg)
     if method == "hash":
@@ -127,6 +147,19 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     chosen = _strategy(
         "statistics" if strategy is None else strategy, sample_rows, max_sample_rows, seed
     )
+    if chosen == "auto":
+        return plan_auto(
+            database,
+            table,
+            column,
+            partitions,
+            # Hash predicates only when the caller did not ask for ranges.
+            hash_allowed=method is None,
+            sample_rows=sample_rows,
+            max_sample_rows=max_sample_rows,
+            seed=seed,
+            statement_timeout_ms=statement_timeout_ms,
+        )
     if chosen == "exact":
         return plan_from_exact(
             database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
@@ -154,7 +187,7 @@ def _strategy(
     if strategy not in STRATEGIES:
         msg = f"strategy must be one of {', '.join(STRATEGIES)}, not {strategy!r}"
         raise ValueError(msg)
-    if strategy != "sample" and (sample_rows, max_sample_rows, seed) != (None, None, None):
-        msg = "sample_rows, max_sample_rows and seed are for strategy='sample'"
+    if strategy not in _SAMPLING and (sample_rows, max_sample_rows, seed) != (None, None, None):
+        msg = "sample_rows, max_sample_rows and seed are for strategy='sample' or 'auto'"
         raise ValueError(msg)
     return strategy

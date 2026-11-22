@@ -549,6 +549,11 @@ def test_the_strategies_are_the_adapters() -> None:
         ),
         (("--strategy", "sample", "--seed", "0"), {"strategy": "sample", "seed": 0}),
         (("--strategy", "exact"), {"strategy": "exact"}),
+        (("--strategy", "auto"), {"strategy": "auto"}),
+        (
+            ("--strategy", "auto", "--sample-rows", "100", "--seed", "2"),
+            {"strategy": "auto", "sample_rows": 100, "seed": 2},
+        ),
         (
             ("--strategy", "exact", "--statement-timeout-ms", "60000"),
             {"strategy": "exact", "statement_timeout_ms": 60000},
@@ -577,7 +582,7 @@ def test_plan_stats_and_verify_pass_the_planning_options(
 @pytest.mark.parametrize(
     ("given", "options"),
     [
-        (("--method", "range"), {}),
+        (("--method", "range"), {"method": "range"}),
         (("--method", "hash"), {"method": "hash"}),
         (
             ("--method", "hash", "--statement-timeout-ms", "5"),
@@ -603,6 +608,15 @@ def test_plan_and_verify_pass_the_method(
     [
         ((*PLAN_ARGS, "--method", "hash", "--strategy", "statistics"), "for --method range"),
         ((*PLAN_ARGS, "--method", "hash", "--strategy", "sample"), "for --method range"),
+        ((*PLAN_ARGS, "--method", "hash", "--strategy", "auto"), "for --method range"),
+        (
+            (*PLAN_ARGS, "--strategy", "exact", "--seed", "1"),
+            "--sample-rows, --max-sample-rows and --seed need --strategy sample or auto",
+        ),
+        (
+            (*PLAN_ARGS, "--strategy", "auto", "--max-sample-rows", "29999"),
+            "--max-sample-rows must be at least the sample size, 30000",
+        ),
         ((*VERIFY_ARGS, *FRESH, "--method", "hash", "--seed", "1"), "for --method range"),
         ((*PLAN_ARGS, "--method", "mod"), "invalid choice: 'mod'"),
         ((*STATS_ARGS, "--method", "hash"), "unrecognized arguments: --method hash"),

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/Diafyx/skewsplit/compare/python-v0.1.0...python-v0.2.0) (2026-11-22)
+
+
+### Features
+
+* **core:** plan hash predicates for columns without a usable order ([#79](https://github.com/Diafyx/skewsplit/issues/79)) ([6da21ef](https://github.com/Diafyx/skewsplit/commit/6da21efc72365782daea5357b0f4b3f87f8da12f)), closes [#27](https://github.com/Diafyx/skewsplit/issues/27)
+* **postgres:** choose the strategy automatically and say why ([#80](https://github.com/Diafyx/skewsplit/issues/80)) ([8797f5b](https://github.com/Diafyx/skewsplit/commit/8797f5b17a0e4cf4ac575ef970b78dc7bedda2ec)), closes [#28](https://github.com/Diafyx/skewsplit/issues/28)
+* **postgres:** plan and verify a filtered read with where ([#83](https://github.com/Diafyx/skewsplit/issues/83)) ([e714669](https://github.com/Diafyx/skewsplit/commit/e7146699d980bc8ec4b8a0961fb7a4e2c17242bd)), closes [#30](https://github.com/Diafyx/skewsplit/issues/30)
+* **postgres:** plan from a sample of the table with TABLESAMPLE ([#76](https://github.com/Diafyx/skewsplit/issues/76)) ([9b92c5d](https://github.com/Diafyx/skewsplit/commit/9b92c5dc8054c54d9c868ea032047b5838326f41)), closes [#25](https://github.com/Diafyx/skewsplit/issues/25)
+* **postgres:** plan from exact quantiles of every row ([#78](https://github.com/Diafyx/skewsplit/issues/78)) ([748dcb5](https://github.com/Diafyx/skewsplit/commit/748dcb55a767942e7d5a382da721732bffd4383e))
+
 ## 0.1.0 (2026-11-21)
 
 

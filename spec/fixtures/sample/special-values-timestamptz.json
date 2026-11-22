@@ -1,0 +1,54 @@
+{
+  "description": "timestamptz. infinity and -infinity are left out: 2 sampled rows scale to (2 x 2 x 1000 + 10) / 20 = 200 unestimated rows. The fraction of a second is written without trailing zeros: .500 is .5. All 8 ordinary values are sampled once, h = 8, m = 7. H = 1000 - 0 - 0 - 200 = 800.",
+  "input": {
+    "column": "c",
+    "type": "timestamptz",
+    "partitions": 4,
+    "rows_estimate": 1000,
+    "sample_null_rows": 0,
+    "sample_values": [
+      {"value": "infinity", "rows": 1},
+      {"value": "2026-01-01 00:00:00+00", "rows": 1},
+      {"value": "2026-01-01 00:00:00.500+00", "rows": 1},
+      {"value": "-infinity", "rows": 1},
+      {"value": "2026-01-02 12:00:00+00", "rows": 1},
+      {"value": "2026-01-03 00:00:00.000001+00", "rows": 1},
+      {"value": "2026-02-01 00:00:00+00", "rows": 1},
+      {"value": "2026-03-01 08:30:00+00", "rows": 1},
+      {"value": "2026-06-01 00:00:00+00", "rows": 1},
+      {"value": "2026-12-31 23:59:59.999999+00", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "timestamptz",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "2026-01-01 00:00:00+00",
+          "2026-01-01 00:00:00.5+00",
+          "2026-01-02 12:00:00+00",
+          "2026-01-03 00:00:00.000001+00",
+          "2026-02-01 00:00:00+00",
+          "2026-03-01 08:30:00+00",
+          "2026-06-01 00:00:00+00",
+          "2026-12-31 23:59:59.999999+00"
+        ],
+        "rows": 800
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 1000,
+        "sample_rows": 10,
+        "unestimated_rows": 200,
+        "warnings": [
+          {"code": "special_values_left_out", "rows": 200}
+        ]
+      }
+    }
+  }
+}

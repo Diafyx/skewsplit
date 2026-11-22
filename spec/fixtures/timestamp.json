@@ -16,7 +16,7 @@
     }
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "column": "created_at",
     "type": "timestamp",
     "requested_partitions": 3,

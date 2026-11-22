@@ -9,8 +9,8 @@ skew score. Running the fixtures through a planner is each implementation's job.
 
 The array text fixtures in pg-array/ (spec section 12) have no plan; only
 their names and spec versions are checked here. For the statistics fixtures
-in pg-stats/ (spec section 13), it also checks the warnings in each result's
-source against its row counts.
+in pg-stats/ (spec section 13) and the sample fixtures in sample/ (section 14),
+it also checks the warnings in each result's source against its row counts.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Any
 
 DEFAULT_DIR = Path("spec/fixtures")
 # Fixtures of the other functions of the spec, in subdirectories.
-SUBDIRS = ("pg-array", "pg-stats")
+SUBDIRS = ("pg-array", "pg-stats", "sample")
 SPEC = Path("spec/SPEC.md")
 _VERSION = re.compile(r"^Spec version: \*\*(\d+\.\d+)\*\*$", re.MULTILINE)
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\.json")
@@ -197,6 +197,15 @@ def check_statistics(source: dict[str, Any]) -> list[str]:
     return []
 
 
+def check_sample(source: dict[str, Any]) -> list[str]:
+    """Check the warnings of an input converted from a sample (spec section 14)."""
+    unestimated = source["unestimated_rows"]
+    expected = [{"code": "special_values_left_out", "rows": unestimated}] if unestimated else []
+    if source["warnings"] != expected:
+        return [f"source warnings must be {expected}, from unestimated_rows"]
+    return []
+
+
 def check_fixture(path: Path, version: str, *, kind: str = "plan") -> list[str]:
     """Return the problems with one fixture file, each prefixed with its name.
 
@@ -213,6 +222,8 @@ def check_fixture(path: Path, version: str, *, kind: str = "plan") -> list[str]:
         problems += check_plan(fixture["input"], expected)
     if kind == "pg-stats" and not is_error:
         problems += check_statistics(expected["input"]["source"])
+    if kind == "sample" and not is_error:
+        problems += check_sample(expected["input"]["source"])
     return [f"{path}: {problem}" for problem in problems]
 
 

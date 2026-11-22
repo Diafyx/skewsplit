@@ -17,7 +17,7 @@
     }
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "column": "closed_on",
     "type": "date",
     "requested_partitions": 3,

@@ -71,6 +71,9 @@ check-fixtures:
 	$(UV_RUN) check-jsonschema --check-metaschema spec/schema/pg-stats.schema.json
 	$(UV_RUN) check-jsonschema --schemafile spec/schema/pg-stats.schema.json \
 		spec/fixtures/pg-stats/*.json
+	$(UV_RUN) check-jsonschema --check-metaschema spec/schema/sample.schema.json
+	$(UV_RUN) check-jsonschema --schemafile spec/schema/sample.schema.json \
+		spec/fixtures/sample/*.json
 	$(SCRIPT) scripts/check_fixtures.py
 
 # Unit and property tests with coverage data. Run from a clean data file so a

@@ -1,0 +1,50 @@
+{
+  "description": "numeric, scale 2. NaN, Infinity and -Infinity have no ordinal: their 1 + 2 + 1 = 4 sampled rows scale to unestimated_rows = (2 x 4 x 100 + 10) / 20 = 40, with the warning special_values_left_out. S = 6 rows of ordinary values, which are written with two decimals: 1.5 is 1.50. 1.50 (3 rows) is common with 30 rows. h = 3 (0.25, 2.00, 10.10), m = 2. H = 100 - 0 - 30 - 40 = 30.",
+  "input": {
+    "column": "c",
+    "type": "numeric",
+    "partitions": 4,
+    "rows_estimate": 100,
+    "sample_null_rows": 0,
+    "sample_values": [
+      {"value": "NaN", "rows": 1},
+      {"value": "1.5", "rows": 3},
+      {"value": "Infinity", "rows": 2},
+      {"value": "10.1", "rows": 1},
+      {"value": "-Infinity", "rows": 1},
+      {"value": "2", "rows": 1},
+      {"value": "0.25", "rows": 1}
+    ],
+    "scale": 2
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "numeric",
+      "scale": 2,
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [
+        {"value": "1.50", "rows": 30}
+      ],
+      "histogram": {
+        "bounds": [
+          "0.25",
+          "2.00",
+          "10.10"
+        ],
+        "rows": 30
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 100,
+        "sample_rows": 10,
+        "unestimated_rows": 40,
+        "warnings": [
+          {"code": "special_values_left_out", "rows": 40}
+        ]
+      }
+    }
+  }
+}

@@ -31,6 +31,13 @@ print(plan.report)
 df = spark.read.jdbc(url, "public.orders", predicates=plan.predicates, properties=properties)
 ```
 
+That reads the column's statistics in `pg_stats`. When they are missing or
+out of date, plan from a sample of the table instead:
+
+```python
+plan = postgres.plan(dsn, "public.orders", "customer_id", 16, strategy="sample", seed=7)
+```
+
 The planner itself needs no database:
 
 ```python
@@ -56,8 +63,9 @@ The planner itself needs no database:
 ```
 
 From the command line, `skewsplit plan --table public.orders --column
-customer_id --partitions 16` prints the same report, and `--format pyspark`
-prints the code that reads the table.
+customer_id --partitions 16` prints the same report, `--strategy sample`
+plans from a sample, and `--format pyspark` prints the code that reads the
+table.
 
 **The output contains real values from the column**: treat plans, reports and
 logs like the data they describe.

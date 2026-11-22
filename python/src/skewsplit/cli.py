@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn
@@ -29,6 +30,11 @@ if TYPE_CHECKING:
     # What verify needs of a plan: the column, each predicate's SQL and
     # estimated rows, the requested partitions and the estimated skew score.
     PlanFile = tuple[str, list[tuple[str, int]], int, float | None]
+
+# skewsplit.postgres.STRATEGIES and the default sample size, without importing
+# psycopg, which the postgres extra installs.
+STRATEGIES = ("statistics", "sample")
+SAMPLE_ROWS = 30000
 
 OK = 0
 VERIFY_FAILED = 1
@@ -51,6 +57,9 @@ exit codes:
   {DATABASE}  the database could not be reached, or a query failed or timed out
 """
 
+
+_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+_MAJOR, _MINOR = SPEC_VERSION.split(".")
 
 _PLAN_FORMATS: dict[str, Callable[[Plan], str]] = {
     "text": lambda plan: plan.report,
@@ -93,9 +102,10 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--table", required=True, help="the table, as SQL names it")
         return sub
 
-    plan = command("plan", "Plan predicates from the column's statistics in pg_stats")
+    plan = command("plan", "Plan predicates from the column's statistics or a sample")
     plan.add_argument("--column", required=True, help="the column to split, not quoted")
     plan.add_argument("--partitions", required=True, type=int, metavar="N")
+    _planning_options(plan)
     plan.add_argument(
         "--format",
         choices=tuple(_PLAN_FORMATS),
@@ -112,6 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("--column", help="the column to split, not quoted")
     verify.add_argument("--partitions", type=int, metavar="N")
+    _planning_options(verify, timeout=False)
     verify.add_argument(
         "--counts",
         action="store_true",
@@ -121,12 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--statement-timeout-ms",
         type=_positive,
         metavar="MS",
-        help="cancel a query that runs longer than this",
+        help="cancel a query, of the check or of planning, that runs longer than this",
     )
     verify.add_argument("--format", choices=("text", "json"), default="text")
 
     stats = command(
-        "stats", "Print the column's distribution from pg_stats as JSON (spec section 1)"
+        "stats", "Print the column's distribution as JSON (spec section 1), as plan reads it"
     )
     stats.add_argument("--column", required=True, help="the column, not quoted")
     stats.add_argument(
@@ -135,18 +146,62 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="add partitions, which makes the output a complete planner input",
     )
+    _planning_options(stats)
     return parser
+
+
+def _planning_options(sub: argparse.ArgumentParser, *, timeout: bool = True) -> None:
+    sub.add_argument(
+        "--strategy",
+        choices=STRATEGIES,
+        help="statistics: read pg_stats, never the table (the default);"
+        " sample: read a sample of the table with TABLESAMPLE,"
+        " for when the statistics are missing or out of date",
+    )
+    sub.add_argument(
+        "--sample-rows",
+        type=_positive,
+        metavar="N",
+        help=f"for --strategy sample: about how many rows to sample (default {SAMPLE_ROWS})",
+    )
+    sub.add_argument(
+        "--max-sample-rows",
+        type=_positive,
+        metavar="N",
+        help="for --strategy sample: the most rows the sample reads"
+        " (default 10 times --sample-rows)",
+    )
+    sub.add_argument(
+        "--seed",
+        type=int,
+        help="for --strategy sample: the same seed gives the same sample of the same table",
+    )
+    if timeout:
+        sub.add_argument(
+            "--statement-timeout-ms",
+            type=_positive,
+            metavar="MS",
+            help="cancel a query that runs longer than this",
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line and return its exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    sampling = (args.sample_rows, args.max_sample_rows, args.seed) != (None, None, None)
     if args.command == "verify":
         if args.plan is not None and (args.column is not None or args.partitions is not None):
             parser.error("verify takes --plan, or --column and --partitions, not both")
         if args.plan is None and (args.column is None or args.partitions is None):
             parser.error("verify needs --plan, or --column and --partitions")
+        if args.plan is not None and (args.strategy is not None or sampling):
+            parser.error("--strategy and its options are for planning, not for --plan")
+    if sampling and args.strategy != "sample":
+        parser.error("--sample-rows, --max-sample-rows and --seed need --strategy sample")
+    smallest = SAMPLE_ROWS if args.sample_rows is None else args.sample_rows
+    if args.max_sample_rows is not None and args.max_sample_rows < smallest:
+        parser.error(f"--max-sample-rows must be at least the sample size, {smallest}")
     try:
         output, code = _run(args)
     except CommandError as error:
@@ -171,15 +226,17 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
         message = "this command needs psycopg: pip install 'skewsplit[postgres]'"
         raise CommandError(USAGE, message) from None
     secrets = passwords(args.dsn)
+    options = _options(args)
     try:
         with _connect(args.dsn, secrets) as conn:
             if args.command == "plan":
-                result = postgres.plan(conn, args.table, args.column, args.partitions)
+                result = postgres.plan(conn, args.table, args.column, args.partitions, **options)
                 return _PLAN_FORMATS[args.format](result), OK
             if args.command == "stats":
-                return _stats(postgres.distribution(conn, args.table, args.column), args), OK
+                data = postgres.distribution(conn, args.table, args.column, **options)
+                return _stats(data, args), OK
             if plan_file is None:
-                planned = postgres.plan(conn, args.table, args.column, args.partitions)
+                planned = postgres.plan(conn, args.table, args.column, args.partitions, **options)
                 plan_file = (
                     planned.column,
                     [(part.sql, part.estimated_rows) for part in planned.parts],
@@ -206,14 +263,31 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
     return _verify_text(found, estimates, partitions, skew), code
 
 
+def _options(args: argparse.Namespace) -> dict[str, Any]:
+    """The keyword arguments of postgres.plan and postgres.distribution that were given."""
+    options: dict[str, Any] = {}
+    if args.strategy == "sample":
+        options["strategy"] = "sample"
+        given = {"sample_rows": args.sample_rows, "max_sample_rows": args.max_sample_rows}
+        options.update({key: value for key, value in given.items() if value is not None})
+        if args.seed is not None:
+            options["seed"] = args.seed
+    if args.statement_timeout_ms is not None:
+        options["statement_timeout_ms"] = args.statement_timeout_ms
+    return options
+
+
 def _read_plan(name: str) -> PlanFile:
     """Read the parts of a JSON plan that verify needs."""
     where = "the plan on standard input" if name == "-" else f"the plan {name}"
     data = _load(name, where)
     if not isinstance(data, dict):
         _invalid(f"{where} is not a JSON object")
-    if data.get("spec_version") != SPEC_VERSION:
-        _invalid(f"{where} needs spec_version {SPEC_VERSION!r}, as `skewsplit plan` writes")
+    if not readable(data.get("spec_version")):
+        _invalid(
+            f"{where} needs a spec_version from {_MAJOR}.0 to {SPEC_VERSION},"
+            " as `skewsplit plan` writes"
+        )
     column = data.get("column")
     partitions = _integer(data.get("requested_partitions"))
     predicates = data.get("predicates")
@@ -234,6 +308,16 @@ def _read_plan(name: str) -> PlanFile:
     if isinstance(skew, bool) or not isinstance(skew, (int, float)):
         _invalid(f"{where} needs a skew_score that is a number or null")
     return column, estimates, partitions, float(skew)
+
+
+def readable(version: object) -> bool:
+    """Whether verify reads a plan of this spec version.
+
+    That is every version with the same major version and a minor version up
+    to this one's, which only add keys (spec section 11).
+    """
+    match = _VERSION.fullmatch(version) if isinstance(version, str) else None
+    return match is not None and match[1] == _MAJOR and int(match[2]) <= int(_MINOR)
 
 
 def _load(name: str, where: str) -> object:

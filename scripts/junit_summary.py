@@ -4,6 +4,8 @@ Usage: python scripts/junit_summary.py TITLE REPORT...
 
 Appends to the file in ``$GITHUB_STEP_SUMMARY`` when it is set, and prints
 the summary either way. Always exits 0: the test step itself fails the job.
+Properties the tests recorded with ``record_testsuite_property``, such as a
+planning time, are listed under the totals.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ class Totals:
     skipped: int = 0
     seconds: float = 0.0
     failures: list[str] = field(default_factory=list)
+    properties: list[tuple[str, str]] = field(default_factory=list)
 
 
 def collect(paths: list[Path]) -> Totals:
@@ -33,6 +36,9 @@ def collect(paths: list[Path]) -> Totals:
     totals = Totals()
     for path in paths:
         root = ET.parse(path).getroot()  # noqa: S314 -- see the import above
+        totals.properties += [
+            (prop.get("name", ""), prop.get("value", "")) for prop in root.iter("property")
+        ]
         for case in root.iter("testcase"):
             totals.tests += 1
             totals.seconds += float(case.get("time", "0") or 0)
@@ -65,6 +71,9 @@ def render(title: str, totals: Totals) -> str:
             f" | {totals.seconds:.1f} s |"
         ),
     ]
+    if totals.properties:
+        lines += ["", "Recorded:", ""]
+        lines += [f"- `{name}`: {value}" for name, value in totals.properties]
     if totals.failures:
         lines += ["", "Failed:", ""]
         lines += [f"- `{name}`" for name in totals.failures[:MAX_LISTED]]

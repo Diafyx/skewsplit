@@ -1,0 +1,42 @@
+{
+  "description": "T = 1 and n = S = 5. 1 and 2 are common, with 2 sampled rows each, and scale to (2 x 2 x 1 + 5) / 10 = 0, so each has max(1, 0) = 1 row. 9, sampled once, makes the list: h = 1, and m = 1. 1 - 0 - 2 is -1, so H = max(0, -1) = 0.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 1,
+    "sample_null_rows": 0,
+    "sample_values": [
+      {"value": "1", "rows": 2},
+      {"value": "2", "rows": 2},
+      {"value": "9", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [
+        {"value": "1", "rows": 1},
+        {"value": "2", "rows": 1}
+      ],
+      "histogram": {
+        "bounds": [
+          "9",
+          "9"
+        ],
+        "rows": 0
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 1,
+        "sample_rows": 5,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

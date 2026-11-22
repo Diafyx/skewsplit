@@ -72,3 +72,24 @@ def test_main_prints_without_a_step_summary(
 def test_output_prints_on_a_cp1252_console(report: Path) -> None:
     text = render("py-unit", collect([report]))
     assert text.encode("cp1252").decode("cp1252") == text
+
+
+def test_recorded_properties_are_listed(tmp_path: Path) -> None:
+    path = tmp_path / "junit.xml"
+    path.write_text(
+        '<testsuites><testsuite name="pytest"><properties>'
+        '<property name="sample_planning_ms" value="41.5"/>'
+        '<property name="sample_rows" value="30012"/>'
+        '</properties><testcase classname="t" name="test_x" time="1"/></testsuite></testsuites>',
+        encoding="utf-8",
+    )
+    totals = collect([path])
+    assert totals.properties == [("sample_planning_ms", "41.5"), ("sample_rows", "30012")]
+    text = render("py-integration", totals)
+    assert text.endswith("Recorded:\n\n- `sample_planning_ms`: 41.5\n- `sample_rows`: 30012\n")
+
+
+def test_without_properties_nothing_is_recorded(report: Path) -> None:
+    totals = collect([report])
+    assert totals.properties == []
+    assert "Recorded:" not in render("py-unit", totals)

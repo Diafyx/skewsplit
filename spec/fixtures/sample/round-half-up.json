@@ -1,0 +1,37 @@
+{
+  "description": "T = 5, n = 2: each sampled row stands for 2.5 rows, and scale(1) = (2 x 1 x 5 + 2) / 4 = 3 rounds half up. null_rows = 3. The value 7 is sampled once, so it is not common; h = 1 and H = 5 - 3 = 2.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 5,
+    "sample_null_rows": 1,
+    "sample_values": [
+      {"value": "7", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 3,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "7",
+          "7"
+        ],
+        "rows": 2
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 5,
+        "sample_rows": 2,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

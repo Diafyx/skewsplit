@@ -1,0 +1,18 @@
+{
+  "description": "sample is not a field of the conversion input.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 1000,
+    "sample_null_rows": 0,
+    "sample_values": [],
+    "sample": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

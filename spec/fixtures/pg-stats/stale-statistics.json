@@ -14,7 +14,7 @@
     "modified_since_analyze": 101
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "input": {
       "column": "c",
       "type": "int4",

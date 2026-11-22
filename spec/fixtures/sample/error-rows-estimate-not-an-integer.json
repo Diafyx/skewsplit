@@ -1,0 +1,17 @@
+{
+  "description": "rows_estimate must be a JSON integer, not true.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": true,
+    "sample_null_rows": 0,
+    "sample_values": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

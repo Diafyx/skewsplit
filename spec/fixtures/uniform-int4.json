@@ -22,7 +22,7 @@
     }
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "column": "id",
     "type": "int4",
     "requested_partitions": 4,

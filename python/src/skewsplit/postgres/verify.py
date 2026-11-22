@@ -15,7 +15,7 @@ from psycopg import sql
 from psycopg.rows import tuple_row
 
 from skewsplit.postgres.catalog import find_column
-from skewsplit.postgres.connection import connection
+from skewsplit.postgres.connection import check_timeout, connection, set_timeout
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 # Read-only, so the predicates cannot change anything, even with side effects.
 _READ_ONLY: Final = "SELECT pg_catalog.set_config('transaction_read_only', 'on', true)"
-_TIMEOUT: Final = "SELECT pg_catalog.set_config('statement_timeout', %(timeout)s, true)"
 
 # array_positions finds the predicates that are true: NULL counts as false,
 # as in a WHERE clause.
@@ -105,9 +104,7 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
         psycopg.Error: If a predicate is not valid SQL, or a query was
             cancelled by the timeout (``psycopg.errors.QueryCanceled``).
     """
-    if statement_timeout_ms is not None and statement_timeout_ms <= 0:
-        msg = f"statement_timeout_ms must be positive, not {statement_timeout_ms}"
-        raise ValueError(msg)
+    check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         qualified = find_column(conn, table, column).qualified
         # find_column quoted the name with quote_ident.
@@ -116,8 +113,7 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
         conditions = [sql.SQL("(\n" + text + "\n)") for text in predicates]
         with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
             cursor.execute(_READ_ONLY)
-            if statement_timeout_ms is not None:
-                cursor.execute(_TIMEOUT, {"timeout": str(statement_timeout_ms)})
+            set_timeout(cursor, statement_timeout_ms)
             scan = sql.SQL(_SCAN).format(predicates=sql.SQL(", ").join(conditions), table=target)
             total, unmatched, overlapping = _one(cursor, scan)
             rows = None

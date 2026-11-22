@@ -9,6 +9,8 @@
 | `fixtures/pg-array/*.json` | Cases for reading PostgreSQL array text (spec section 12) |
 | [`schema/pg-stats.schema.json`](schema/pg-stats.schema.json) | JSON Schema of one statistics fixture |
 | `fixtures/pg-stats/*.json` | Cases for converting PostgreSQL statistics into the input (spec section 13) |
+| [`schema/sample.schema.json`](schema/sample.schema.json) | JSON Schema of one sample fixture |
+| `fixtures/sample/*.json` | Cases for converting a sample of a column into the input (spec section 14) |
 
 ## Fixture format
 
@@ -46,6 +48,14 @@ planner `input` that the conversion builds, or an `error` code. The messages
 of the warnings in the input's `source` are left out, like all messages, and
 the same rules apply as for the other fixtures.
 
+### Sample fixtures
+
+The files in `fixtures/sample/` check spec section 14. Each `input` is a
+conversion input: the table's estimated rows, and the sampled NULL rows and
+values with their counts. `expected` is `spec_version` with either the planner
+`input` that the conversion builds, or an `error` code, under the same rules
+as the statistics fixtures.
+
 ## Checks
 
 `make check-fixtures` validates every fixture against the schema, then runs
@@ -53,10 +63,10 @@ the same rules apply as for the other fixtures.
 counts add up and match the input, the predicates fit together in order,
 each warning is given exactly when the spec says, and the skew score follows
 from the largest predicate. For the array text fixtures it checks only the
-names and the spec version; for the statistics fixtures, also the warnings in
-each result's `source`. It does not plan, so a wrong split point is caught
-by review of the description and by the implementations' tests: for Python,
-`make conformance` runs every fixture against the core.
+names and the spec version; for the statistics and sample fixtures, also the
+warnings in each result's `source`. It does not plan, so a wrong split point is
+caught by review of the description and by the implementations' tests: for
+Python, `make conformance` runs every fixture against the core.
 
 A change to `SPEC.md` that changes any output changes the fixtures in the same
 pull request.

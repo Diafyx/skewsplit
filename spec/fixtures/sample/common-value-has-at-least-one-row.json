@@ -1,0 +1,33 @@
+{
+  "description": "T = 1 and n = 1000: 4 is common (S = 1000, 2 x 1000 >= 1000) but scales to (2 x 2 x 1 + 1000) / 2000 = 0, so it has max(1, 0) = 1 row. The 998 NULL rows scale to (2 x 998 + 1000) / 2000 = 1. No row is left for a histogram, and there is none: h = 0.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 1,
+    "sample_null_rows": 998,
+    "sample_values": [
+      {"value": "4", "rows": 2}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 1,
+      "mcv": [
+        {"value": "4", "rows": 1}
+      ],
+      "histogram": null,
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 1,
+        "sample_rows": 1000,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

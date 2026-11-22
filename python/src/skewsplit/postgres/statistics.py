@@ -15,7 +15,7 @@ from psycopg.rows import tuple_row
 from skewsplit.core.pgstats import from_pg_stats
 from skewsplit.core.planner import plan
 from skewsplit.postgres.catalog import CatalogError, CatalogErrorCode, Column, find_column
-from skewsplit.postgres.connection import connection
+from skewsplit.postgres.connection import check_timeout, connection, set_timeout
 
 if TYPE_CHECKING:
     import psycopg
@@ -127,7 +127,13 @@ class Statistics:
         }
 
 
-def distribution(database: str | psycopg.Connection[Any], table: str, column: str) -> JSON:
+def distribution(
+    database: str | psycopg.Connection[Any],
+    table: str,
+    column: str,
+    *,
+    statement_timeout_ms: int | None = None,
+) -> JSON:
     """Return a column's distribution, from its ``pg_stats`` statistics.
 
     It is the input of spec section 1 without ``partitions``, which is what
@@ -139,17 +145,26 @@ def distribution(database: str | psycopg.Connection[Any], table: str, column: st
             left open and with its settings and transaction as they were.
         table: The table as SQL names it, as for :func:`find_column`.
         column: The column's exact name, not quoted.
+        statement_timeout_ms: A ``statement_timeout`` for the queries that
+            read the statistics, in milliseconds; by default the session's.
 
     Raises:
         CatalogError: If the column cannot be split or has no statistics.
         SpecError: If the statistics do not convert into a valid input.
+        ValueError: If ``statement_timeout_ms`` is not positive.
     """
+    check_timeout(statement_timeout_ms)
     with connection(database) as conn:
-        return _distribution(conn, table, column)
+        return _distribution(conn, table, column, statement_timeout_ms)
 
 
 def plan_from_statistics(
-    database: str | psycopg.Connection[Any], table: str, column: str, partitions: int
+    database: str | psycopg.Connection[Any],
+    table: str,
+    column: str,
+    partitions: int,
+    *,
+    statement_timeout_ms: int | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates for a column from its ``pg_stats`` statistics.
 
@@ -159,26 +174,32 @@ def plan_from_statistics(
         table: The table as SQL names it, as for :func:`find_column`.
         column: The column's exact name, not quoted.
         partitions: The number of predicates to plan besides the NULL predicate.
+        statement_timeout_ms: As for :func:`distribution`.
 
     Raises:
         CatalogError: If the column cannot be split or has no statistics.
         SpecError: If the statistics do not convert into a valid input.
+        ValueError: If ``statement_timeout_ms`` is not positive.
     """
+    check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         start = perf_counter()
-        data = _distribution(conn, table, column)
+        data = _distribution(conn, table, column, statement_timeout_ms)
     result = plan({**data, "partitions": partitions})
     elapsed_ms = (perf_counter() - start) * 1000
     source = cast("JSON", result.source)
     return replace(result, source={**source, "planning_ms": round(elapsed_ms, 3)})
 
 
-def read_statistics(conn: psycopg.Connection[Any], column: Column) -> Statistics:
+def read_statistics(
+    conn: psycopg.Connection[Any], column: Column, *, statement_timeout_ms: int | None = None
+) -> Statistics:
     """Read a column's statistics and the row counts they go with.
 
     The table's own statistics are used, or the inherited ones if it has
     partitions or inheritance children. The reading transaction is rolled
     back, so the caller's settings and transaction are left as they were.
+    ``statement_timeout_ms`` bounds each of its queries.
 
     Raises:
         CatalogError: ``statistics_missing`` if ``ANALYZE`` has to run first,
@@ -186,6 +207,7 @@ def read_statistics(conn: psycopg.Connection[Any], column: Column) -> Statistics
     """
     with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
         cursor.execute(_SETTINGS)
+        set_timeout(cursor, statement_timeout_ms)
         tree = cursor.execute(_TREE, {"relid": column.relid}).fetchall()
         facts = cursor.execute(_FACTS, {"relid": column.relid}).fetchone()
         inherited = len(tree) > 1
@@ -231,8 +253,11 @@ def read_statistics(conn: psycopg.Connection[Any], column: Column) -> Statistics
     )
 
 
-def _distribution(conn: psycopg.Connection[Any], table: str, column: str) -> JSON:
-    statistics = read_statistics(conn, find_column(conn, table, column))
+def _distribution(
+    conn: psycopg.Connection[Any], table: str, column: str, statement_timeout_ms: int | None
+) -> JSON:
+    found = find_column(conn, table, column)
+    statistics = read_statistics(conn, found, statement_timeout_ms=statement_timeout_ms)
     # The conversion does not depend on the partitions; any valid number will do.
     data = from_pg_stats(statistics.conversion_input(1))
     del data["partitions"]

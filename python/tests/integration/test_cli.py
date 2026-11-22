@@ -114,6 +114,27 @@ def test_stats_gives_what_plan_plans_from(
     assert plan(json.loads(out)).parts == expected.parts
 
 
+SAMPLE = ("--strategy", "sample", "--sample-rows", "5000", "--seed", "3")
+
+
+def test_the_sample_strategy(
+    capsys: pytest.CaptureFixture[str], database: Database, table: str
+) -> None:
+    # The table has 1000 rows, fewer than the sample size, so it is read whole.
+    code, out, err = run(capsys, database, "plan", "--table", table, *PLAN_4, *SAMPLE)
+    assert (code, err) == (cli.OK, "")
+    assert out.split("\n")[1].startswith("from a sample of 1000 rows, planned in ")
+    code, out, _ = run(capsys, database, "stats", "--table", table, "--column", "v", *SAMPLE)
+    source = json.loads(out)["source"]
+    assert (code, source["statistics"], source["method"]) == (cli.OK, "sample", "all")
+    expected = postgres.plan(database.dsn, table, "v", 4, strategy="sample").parts
+    assert skewsplit.plan(json.loads(out), 4).parts == expected
+    argv = ("verify", "--table", table, *PLAN_4, *SAMPLE, "--statement-timeout-ms", "60000")
+    code, out, _ = run(capsys, database, *argv)
+    assert code == cli.OK
+    assert out == f"OK: each of the 1000 rows of {table} matches exactly one predicate\n"
+
+
 def test_a_missing_table(capsys: pytest.CaptureFixture[str], database: Database) -> None:
     argv = ("plan", "--table", f"{database.schema}.no_such_table", *PLAN_4)
     code, out, err = run(capsys, database, *argv)

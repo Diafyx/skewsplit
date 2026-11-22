@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 # skewsplit.postgres.STRATEGIES and the default sample size, without importing
 # psycopg, which the postgres extra installs.
-STRATEGIES = ("statistics", "sample")
+STRATEGIES = ("statistics", "sample", "exact")
 SAMPLE_ROWS = 30000
 
 OK = 0
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--table", required=True, help="the table, as SQL names it")
         return sub
 
-    plan = command("plan", "Plan predicates from the column's statistics or a sample")
+    plan = command("plan", "Plan predicates from the column's statistics, a sample or every row")
     plan.add_argument("--column", required=True, help="the column to split, not quoted")
     plan.add_argument("--partitions", required=True, type=int, metavar="N")
     _planning_options(plan)
@@ -156,7 +156,8 @@ def _planning_options(sub: argparse.ArgumentParser, *, timeout: bool = True) -> 
         choices=STRATEGIES,
         help="statistics: read pg_stats, never the table (the default);"
         " sample: read a sample of the table with TABLESAMPLE,"
-        " for when the statistics are missing or out of date",
+        " for when the statistics are missing or out of date;"
+        " exact: read every row, which scans the whole table three times and sorts the column",
     )
     sub.add_argument(
         "--sample-rows",
@@ -266,6 +267,8 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
 def _options(args: argparse.Namespace) -> dict[str, Any]:
     """The keyword arguments of postgres.plan and postgres.distribution that were given."""
     options: dict[str, Any] = {}
+    if args.strategy == "exact":
+        options["strategy"] = "exact"
     if args.strategy == "sample":
         options["strategy"] = "sample"
         given = {"sample_rows": args.sample_rows, "max_sample_rows": args.max_sample_rows}

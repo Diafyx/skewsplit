@@ -1,4 +1,4 @@
-"""The PostgreSQL adapter: plan from a table's statistics, and verify a plan.
+"""The PostgreSQL adapter: plan from a table's statistics, a sample or every row, and verify.
 
 It needs the ``postgres`` extra (``pip install 'skewsplit[postgres]'``), which
 installs psycopg. psycopg also needs libpq; install ``psycopg[binary]`` as well
@@ -7,8 +7,10 @@ if the system has none.
 :func:`plan` reads the column's statistics from ``pg_stats`` and never scans
 the table, and :func:`distribution` returns what it read, for
 :func:`skewsplit.plan`. With ``strategy="sample"``, both read a sample of the
-table instead, for when the statistics are missing or out of date.
-:func:`verify` scans the table once, to check that every row matches exactly
+table instead, for when the statistics are missing or out of date. With
+``strategy="exact"``, they read every row, for when accuracy matters more than
+planning time: the queries scan the whole table three times and sort the
+column. :func:`verify` scans the table once, to check that every row matches exactly
 one predicate. They all take a libpq connection string or an open connection,
 which they leave as it was.
 

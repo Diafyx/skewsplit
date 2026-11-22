@@ -135,6 +135,25 @@ def test_the_sample_strategy(
     assert out == f"OK: each of the 1000 rows of {table} matches exactly one predicate\n"
 
 
+def test_the_exact_strategy(
+    capsys: pytest.CaptureFixture[str], database: Database, table: str
+) -> None:
+    exact = ("--strategy", "exact")
+    code, out, err = run(capsys, database, "plan", "--table", table, *PLAN_4, *exact)
+    assert (code, err) == (cli.OK, "")
+    # 900 rows of 1000 not NULL, each value common: every estimate is exact.
+    assert out.startswith("v (int4): 1000 estimated rows, 4 of 4 partitions plus one for NULL")
+    code, out, _ = run(capsys, database, "stats", "--table", table, "--column", "v", *exact)
+    data = json.loads(out)
+    assert (code, data["source"]["statistics"], data["source"]["rows"]) == (cli.OK, "exact", 1000)
+    assert (data["null_rows"], len(data["mcv"]), data["histogram"]) == (100, 900, None)
+    expected = postgres.plan(database.dsn, table, "v", 4, strategy="exact").parts
+    assert skewsplit.plan(data, 4).parts == expected
+    code, out, _ = run(capsys, database, "verify", "--table", table, *PLAN_4, *exact, "--counts")
+    assert code == cli.OK
+    assert out.startswith(f"OK: each of the 1000 rows of {table} matches exactly one predicate\n")
+
+
 def test_a_missing_table(capsys: pytest.CaptureFixture[str], database: Database) -> None:
     argv = ("plan", "--table", f"{database.schema}.no_such_table", *PLAN_4)
     code, out, err = run(capsys, database, *argv)

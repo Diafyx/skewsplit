@@ -30,7 +30,8 @@ skewsplit writes those clauses. It:
 - reads the column's statistics (for PostgreSQL, `pg_stats`: most common values
   and an equi-depth histogram), so planning does not scan the table, or, when
   they are missing or out of date, a sample of the table, which the database
-  counts so that only one row per value reaches skewsplit;
+  counts so that only one row per value reaches skewsplit, or, when accuracy
+  matters more than planning time, exact quantiles of every row;
 - plans ranges of roughly equal *row counts* that the database can answer from
   an index on the column;
 - gives `NULL` rows their own `col IS NULL` predicate, and gives a value that
@@ -138,7 +139,7 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
-| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up, and `statement_timeout_ms` bounds each query of either strategy |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. `statement_timeout_ms` bounds each query of any strategy |
 | `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads, as `skewsplit.plan` takes it. It takes the same options |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
@@ -158,7 +159,7 @@ skewsplit verify --table T (--plan FILE | --column C --partitions N)
 skewsplit stats  --table T --column C [--partitions N]
 
 planning options of plan, stats, and verify without --plan:
-  [--strategy statistics|sample] [--sample-rows N] [--max-sample-rows N] [--seed N]
+  [--strategy statistics|sample|exact] [--sample-rows N] [--max-sample-rows N] [--seed N]
   [--statement-timeout-ms MS]
 ```
 
@@ -187,6 +188,19 @@ section 14 describes:
   change.
 
 The report says how many rows the sample read and how long planning took.
+
+`--strategy exact` reads every row instead, as spec section 15 describes, for
+when accuracy matters more than planning time:
+
+- values with at least a ten-thousandth of the rows get their exact counts,
+  from `GROUP BY ... HAVING`;
+- `percentile_disc` reads the bounds of a histogram of up to 10000 buckets
+  over the other rows, so a range reads within two buckets, a five-thousandth
+  of those rows, of its estimate, and a table of fewer than 10000 rows is
+  planned exactly;
+- **it scans the whole table three times and sorts the column**, so on a large
+  table it takes far longer than the other strategies. Set
+  `--statement-timeout-ms` to bound each query.
 
 For a column with the statistics of the quick start, `plan` prints:
 
@@ -235,7 +249,8 @@ column, such as the primary key, instead.
 
 ## Limitations
 
-- **Statistics.** A plan is as balanced as the statistics are accurate:
+- **Statistics.** A plan from `pg_stats` is as balanced as the statistics are
+  accurate:
   - a range can read up to two histogram buckets more or fewer rows than its
     estimate;
   - on a large table, `ANALYZE` reads a sample, and the sampling error comes on
@@ -250,7 +265,8 @@ column, such as the primary key, instead.
   disk, such as an increasing key, a larger `--sample-rows` helps more than it
   seems to. The predicates still match every row exactly once, and
   `skewsplit verify` checks that on the real table, with `--counts` the actual
-  skew too.
+  skew too. `--strategy exact` has no sampling error, but its estimates are
+  only as accurate as at the time it read the table.
 - **Dominant values.** A value with at least one partition's share of the rows
   gets its own `col = value` predicate and the warning `dominant_value`. No
   plan on this column can make that partition smaller. With too few
@@ -264,8 +280,8 @@ column, such as the primary key, instead.
 - **Tables.** Tables, partitioned tables, materialized views and foreign
   tables, in PostgreSQL only. The role needs `SELECT` on the column, and no
   row-level security may apply to it: otherwise `pg_stats` hides the
-  statistics, and planning fails with `permission_denied`. The sample
-  strategy checks the same. PostgreSQL cannot apply `TABLESAMPLE` to a
+  statistics, and planning fails with `permission_denied`. The sample and
+  exact strategies check the same. PostgreSQL cannot apply `TABLESAMPLE` to a
   foreign table, so the sample strategy fails on one larger than the sample
   size, with PostgreSQL's error.
 

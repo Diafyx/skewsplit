@@ -547,6 +547,11 @@ def test_the_strategies_are_the_adapters() -> None:
             },
         ),
         (("--strategy", "sample", "--seed", "0"), {"strategy": "sample", "seed": 0}),
+        (("--strategy", "exact"), {"strategy": "exact"}),
+        (
+            ("--strategy", "exact", "--statement-timeout-ms", "60000"),
+            {"strategy": "exact", "statement_timeout_ms": 60000},
+        ),
         (
             ("--strategy", "sample", "--max-sample-rows", "30000"),
             {"strategy": "sample", "max_sample_rows": 30000},
@@ -571,8 +576,10 @@ def test_plan_stats_and_verify_pass_the_planning_options(
 @pytest.mark.parametrize(
     ("argv", "message"),
     [
-        ((*PLAN_ARGS, "--strategy", "exact"), "invalid choice: 'exact'"),
+        ((*PLAN_ARGS, "--strategy", "fast"), "invalid choice: 'fast'"),
         ((*PLAN_ARGS, "--sample-rows", "5"), "need --strategy sample"),
+        ((*PLAN_ARGS, "--strategy", "exact", "--sample-rows", "5"), "need --strategy sample"),
+        ((*STATS_ARGS, "--strategy", "exact", "--seed", "5"), "need --strategy sample"),
         ((*STATS_ARGS, "--max-sample-rows", "5"), "need --strategy sample"),
         ((*VERIFY_ARGS, *FRESH, "--seed", "5"), "need --strategy sample"),
         ((*PLAN_ARGS, "--strategy", "statistics", "--seed", "5"), "need --strategy sample"),
@@ -589,6 +596,7 @@ def test_plan_stats_and_verify_pass_the_planning_options(
         ((*STATS_ARGS, "--statement-timeout-ms", "0"), "must be a positive"),
         ((*VERIFY_ARGS, "--plan", "p.json", "--strategy", "statistics"), "not for --plan"),
         ((*VERIFY_ARGS, "--plan", "p.json", "--strategy", "sample"), "not for --plan"),
+        ((*VERIFY_ARGS, "--plan", "p.json", "--strategy", "exact"), "not for --plan"),
     ],
 )
 def test_planning_options_that_do_not_fit(

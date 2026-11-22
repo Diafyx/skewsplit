@@ -12,6 +12,7 @@ from check_fixtures import (
     check_fixture,
     check_name,
     check_plan,
+    check_sample,
     check_statistics,
     main,
     spec_version,
@@ -210,7 +211,7 @@ def test_main_checks_the_array_text_fixtures_without_a_plan(
     fixture = {
         "description": "d",
         "input": {"text": "{}", "type": "int4"},
-        "expected": {"spec_version": "1.0", "error": {"code": "invalid_array"}},
+        "expected": {"spec_version": VERSION, "error": {"code": "invalid_array"}},
     }
     (pg_array / "bad.json").write_text(json.dumps(fixture), encoding="utf-8")
     fixture["expected"] = {"spec_version": "0.9", "values": []}
@@ -224,7 +225,7 @@ def test_main_checks_the_array_text_fixtures_without_a_plan(
             f"{pg_array / 'bad.json'}: error fixtures, and only they, have names starting"
             " with 'error-'"
         ),
-        f"{pg_array / 'empty.json'}: spec_version must be 1.0, the version in spec/SPEC.md",
+        f"{pg_array / 'empty.json'}: spec_version must be {VERSION}, the version in spec/SPEC.md",
         f"{pg_array / 'notes.txt'}: only .json fixtures belong in {pg_array}",
     ]
 
@@ -234,7 +235,7 @@ def test_main_passes_on_the_repository(
 ) -> None:
     monkeypatch.chdir(REPO)
     assert main([]) == 0
-    assert "consistent with spec version 1.0" in capsys.readouterr().out
+    assert f"consistent with spec version {VERSION}" in capsys.readouterr().out
 
 
 STALE = {"code": "stale_statistics", "modified_rows": 101, "rows": 1000}
@@ -294,14 +295,62 @@ def test_main_checks_the_statistics_fixtures(
         "description": "d",
         "input": {},
         "expected": {
-            "spec_version": "1.0",
+            "spec_version": VERSION,
             "input": {"source": statistics_source(101, 0, [])},
         },
     }
     (pg_stats / "stale.json").write_text(json.dumps(fixture), encoding="utf-8")
-    fixture["expected"] = {"spec_version": "1.0", "error": {"code": "invalid_statistics"}}
+    fixture["expected"] = {"spec_version": VERSION, "error": {"code": "invalid_statistics"}}
     (pg_stats / "error-statistics.json").write_text(json.dumps(fixture), encoding="utf-8")
     monkeypatch.chdir(REPO)
     assert main([str(tmp_path)]) == 1
     [problem] = capsys.readouterr().err.splitlines()
     assert problem.startswith(f"{pg_stats / 'stale.json'}: source warnings must be [")
+
+
+def sample_source(unestimated: int, warnings: list[Fixture]) -> Fixture:
+    return {
+        "statistics": "sample",
+        "rows_estimate": 1000,
+        "sample_rows": 100,
+        "unestimated_rows": unestimated,
+        "warnings": warnings,
+    }
+
+
+@pytest.mark.parametrize(("unestimated", "warnings"), [(0, []), (5, [SPECIAL])])
+def test_check_sample_accepts_the_warnings_section_14_gives(
+    unestimated: int, warnings: list[Fixture]
+) -> None:
+    assert check_sample(sample_source(unestimated, warnings)) == []
+
+
+@pytest.mark.parametrize(
+    ("unestimated", "warnings"),
+    [(0, [SPECIAL]), (5, []), (5, [{**SPECIAL, "rows": 4}]), (5, [SPECIAL, SPECIAL])],
+)
+def test_check_sample_reports_wrong_warnings(unestimated: int, warnings: list[Fixture]) -> None:
+    [problem] = check_sample(sample_source(unestimated, warnings))
+    assert problem.startswith("source warnings must be [")
+
+
+def test_main_checks_the_sample_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sample = tmp_path / "sample"
+    sample.mkdir()
+    fixture = {
+        "description": "d",
+        "input": {},
+        "expected": {"spec_version": VERSION, "input": {"source": sample_source(5, [])}},
+    }
+    (sample / "special.json").write_text(json.dumps(fixture), encoding="utf-8")
+    fixture["expected"] = {"spec_version": VERSION, "error": {"code": "invalid_rows"}}
+    (sample / "error-rows.json").write_text(json.dumps(fixture), encoding="utf-8")
+    monkeypatch.chdir(REPO)
+    assert main([str(tmp_path)]) == 1
+    [problem] = capsys.readouterr().err.splitlines()
+    assert (
+        problem
+        == f"{sample / 'special.json'}: source warnings must be [{SPECIAL}], from unestimated_rows"
+    )

@@ -33,7 +33,7 @@
     "count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
     "type": {"enum": ["int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz"]},
     "array_text": {"type": ["string", "null"]},
-    "spec_version": {"const": "1.0"},
+    "spec_version": {"const": "1.1"},
     "statistics": {
       "description": "The conversion input of spec section 13.",
       "type": "object",

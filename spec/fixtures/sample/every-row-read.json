@@ -1,0 +1,47 @@
+{
+  "description": "T = n = 12: every row was read, so scale(c) = (2 x c x 12 + 12) / 24 = c and the counts are exact. S = 10, and the two values sampled more than once are common: 2026-01-01 (4 rows) and 2026-03-01 (2 rows). The others give the list 2026-01-15, 2026-02-01, 2026-04-30, 2026-05-05: h = 4, m = 3, positions 0 to 3. H = 12 - 2 - 6 = 4 = h.",
+  "input": {
+    "column": "c",
+    "type": "date",
+    "partitions": 4,
+    "rows_estimate": 12,
+    "sample_null_rows": 2,
+    "sample_values": [
+      {"value": "2026-02-01", "rows": 1},
+      {"value": "2026-01-01", "rows": 4},
+      {"value": "2026-04-30", "rows": 1},
+      {"value": "2026-03-01", "rows": 2},
+      {"value": "2026-05-05", "rows": 1},
+      {"value": "2026-01-15", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "date",
+      "partitions": 4,
+      "null_rows": 2,
+      "mcv": [
+        {"value": "2026-01-01", "rows": 4},
+        {"value": "2026-03-01", "rows": 2}
+      ],
+      "histogram": {
+        "bounds": [
+          "2026-01-15",
+          "2026-02-01",
+          "2026-04-30",
+          "2026-05-05"
+        ],
+        "rows": 4
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 12,
+        "sample_rows": 12,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

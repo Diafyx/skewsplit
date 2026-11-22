@@ -1,0 +1,46 @@
+{
+  "description": "The bounds follow the order of the values, not of their texts: -20 < -5 < 3 < 10, and the int8 limits sort first and last. n = S = 6, every value sampled once, so none is common. h = 6, m = 5, positions 0 to 5. T = n, so H = 6.",
+  "input": {
+    "column": "c",
+    "type": "int8",
+    "partitions": 4,
+    "rows_estimate": 6,
+    "sample_null_rows": 0,
+    "sample_values": [
+      {"value": "10", "rows": 1},
+      {"value": "-5", "rows": 1},
+      {"value": "9223372036854775807", "rows": 1},
+      {"value": "3", "rows": 1},
+      {"value": "-9223372036854775808", "rows": 1},
+      {"value": "-20", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int8",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": {
+        "bounds": [
+          "-9223372036854775808",
+          "-20",
+          "-5",
+          "3",
+          "10",
+          "9223372036854775807"
+        ],
+        "rows": 6
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 6,
+        "sample_rows": 6,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

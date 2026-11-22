@@ -114,6 +114,33 @@ def test_a_source_without_a_list_of_warnings_adds_none(source: object) -> None:
     assert result.report == plan(SECTION_1).report
 
 
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        ({"sample_rows": 30012}, "from a sample of 30012 rows"),
+        ({"sample_rows": 0, "planning_ms": 5}, "from a sample of 0 rows, planned in 5.000 ms"),
+        (
+            {"sample_rows": 7, "planning_ms": 12.3456},
+            "from a sample of 7 rows, planned in 12.346 ms",
+        ),
+        ({"sample_rows": 7, "planning_ms": True}, "from a sample of 7 rows"),
+        ({"sample_rows": 7, "planning_ms": "1"}, "from a sample of 7 rows"),
+    ],
+)
+def test_the_report_of_a_plan_from_a_sample_says_how_big_it_was(source: object, line: str) -> None:
+    lines = replace(plan(SECTION_1), source=source).report.splitlines()
+    assert lines[1] == line
+    assert lines[2].endswith("  predicate")
+
+
+@pytest.mark.parametrize(
+    "source", [None, [], {"planning_ms": 5}, {"sample_rows": "7"}, {"sample_rows": True}]
+)
+def test_only_a_plan_from_a_sample_has_the_sample_line(source: object) -> None:
+    lines = replace(plan(SECTION_1), source=source).report.splitlines()
+    assert lines[1].endswith("  predicate")
+
+
 def test_to_json_is_to_dict_as_json_text() -> None:
     result = plan({**SECTION_1, "column": "größe", "source": {"table": "Straße"}})
     text = result.to_json()

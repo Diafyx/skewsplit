@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 
@@ -19,6 +19,7 @@ from skewsplit.core.pgarray import parse_values
 from skewsplit.core.pgstats import from_pg_stats
 from skewsplit.core.plan import SPEC_VERSION, error_dict
 from skewsplit.core.planner import plan
+from skewsplit.core.sample import from_sample
 
 pytestmark = pytest.mark.conformance
 
@@ -28,6 +29,7 @@ SPEC = next(path for path in Path(__file__).parents if (path / "spec").is_dir())
 FIXTURES = sorted((SPEC / "fixtures").glob("*.json"))
 PG_ARRAY = sorted((SPEC / "fixtures" / "pg-array").glob("*.json"))
 PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))
+SAMPLE = sorted((SPEC / "fixtures" / "sample").glob("*.json"))
 
 
 def run(data: object) -> dict[str, Any]:
@@ -51,10 +53,10 @@ def read_array(data: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
-def convert(data: object) -> dict[str, Any]:
-    """Return the result of converting statistics (spec section 13): an input or an error."""
+def convert(data: object, conversion: Callable[[object], object] = from_pg_stats) -> dict[str, Any]:
+    """Return the result of converting statistics (spec section 13 or 14): an input or an error."""
     try:
-        out: object = {"spec_version": SPEC_VERSION, "input": from_pg_stats(data)}
+        out: object = {"spec_version": SPEC_VERSION, "input": conversion(data)}
     except SpecError as error:
         out = error_dict(error)
     decoded: dict[str, Any] = json.loads(json.dumps(out, allow_nan=False))
@@ -129,4 +131,28 @@ def test_statistics_fixture(path: Path) -> None:
     assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
     if "input" in expected:
         # The result is a planner input: it plans, and the plan carries its source.
+        assert run(expected["input"])["source"] == expected["input"]["source"]
+
+
+def test_there_are_sample_fixtures_for_every_error_code() -> None:
+    schema = json.loads((SPEC / "schema" / "sample.schema.json").read_text(encoding="utf-8"))
+    codes = {
+        json.loads(path.read_text(encoding="utf-8"))["expected"]["error"]["code"]
+        for path in SAMPLE
+        if path.name.startswith("error-")
+    }
+    assert codes == set(
+        schema["$defs"]["error"]["properties"]["error"]["properties"]["code"]["enum"]
+    )
+    assert len(SAMPLE) >= 30
+
+
+@pytest.mark.parametrize("path", SAMPLE, ids=[path.stem for path in SAMPLE])
+def test_sample_fixture(path: Path) -> None:
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    actual = without_messages(convert(fixture["input"], from_sample))
+    expected = fixture["expected"]
+    assert actual == expected, fixture["description"]
+    assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
+    if "input" in expected:
         assert run(expected["input"])["source"] == expected["input"]["source"]

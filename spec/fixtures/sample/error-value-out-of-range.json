@@ -1,0 +1,19 @@
+{
+  "description": "40000 is above the int2 maximum of 32767.",
+  "input": {
+    "column": "c",
+    "type": "int2",
+    "partitions": 4,
+    "rows_estimate": 1000,
+    "sample_null_rows": 0,
+    "sample_values": [
+      {"value": "40000", "rows": 1}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "value_out_of_range"
+    }
+  }
+}

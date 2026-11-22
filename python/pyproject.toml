@@ -64,4 +64,5 @@ pytest_add_cli_args_test_selection = [
   "tests/unit/test_pgarray.py",
   "tests/unit/test_plan.py",
   "tests/unit/test_planner.py",
+  "tests/unit/test_sample.py",
 ]

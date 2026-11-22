@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from skewsplit.core.errors import SpecError
 
-SPEC_VERSION: Final = "1.0"
+SPEC_VERSION: Final = "1.1"
 
 PredicateKind = Literal["null", "value", "range"]
 WarningCode = Literal[
@@ -135,10 +135,11 @@ class Plan:
     def report(self) -> str:
         """The skew report, as text for people.
 
-        A summary line, each predicate with its estimated rows, and then a
-        line for each warning: the plan's, followed by those in
-        ``source["warnings"]``, which the ``pg_stats`` conversion of spec
-        section 13 adds. The layout may change; read :meth:`to_dict` in code.
+        A summary line, a line on the sample for a plan from one (spec
+        section 14), each predicate with its estimated rows, and then a line
+        for each warning: the plan's, followed by those in
+        ``source["warnings"]``, which the conversions of spec sections 13 and
+        14 add. The layout may change; read :meth:`to_dict` in code.
         """
         kind = self.type_name if self.scale is None else f"{self.type_name}, scale {self.scale}"
         skew = "no skew score"
@@ -150,7 +151,7 @@ class Plan:
             f" plus one for NULL, {skew}"
         )
         width = max(len("rows"), *(len(str(part.estimated_rows)) for part in self.parts))
-        lines = [summary, f"{'rows':>{width}}  predicate"]
+        lines = [summary, *_sample_line(self.source), f"{'rows':>{width}}  predicate"]
         lines.extend(f"{part.estimated_rows:>{width}}  {part.sql}" for part in self.parts)
         warnings: list[tuple[str, str]] = [(w.code, w.message) for w in self.warnings]
         warnings += _source_warnings(self.source)
@@ -274,6 +275,20 @@ def _scala_string(text: str) -> str:
             units = char.encode("utf-16-be", "surrogatepass")
             out.extend(f"\\u{units[i]:02x}{units[i + 1]:02x}" for i in range(0, len(units), 2))
     return '"' + "".join(out) + '"'
+
+
+def _sample_line(source: object) -> list[str]:
+    """Describe the sample a plan came from, if it came from one."""
+    if not isinstance(source, dict):
+        return []
+    rows = source.get("sample_rows")
+    if not isinstance(rows, int) or isinstance(rows, bool):
+        return []
+    line = f"from a sample of {rows} rows"
+    elapsed = source.get("planning_ms")
+    if isinstance(elapsed, (int, float)) and not isinstance(elapsed, bool):
+        line += f", planned in {elapsed:.3f} ms"
+    return [line]
 
 
 def _source_warnings(source: object) -> list[tuple[str, str]]:

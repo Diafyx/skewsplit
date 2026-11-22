@@ -24,7 +24,7 @@
     }
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "column": "seq",
     "type": "int4",
     "requested_partitions": 2,

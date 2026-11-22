@@ -5,7 +5,7 @@
     "type": "int4"
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "error": {
       "code": "invalid_array"
     }

@@ -1,0 +1,17 @@
+{
+  "description": "text is not a type of spec section 2.",
+  "input": {
+    "column": "c",
+    "type": "text",
+    "partitions": 4,
+    "rows_estimate": 1000,
+    "sample_null_rows": 0,
+    "sample_values": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "unsupported_type"
+    }
+  }
+}

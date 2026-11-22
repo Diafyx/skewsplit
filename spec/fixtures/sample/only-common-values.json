@@ -1,0 +1,35 @@
+{
+  "description": "Every ordinary value is common (S = 5; 2 x 1000 >= 5 and 3 x 1000 >= 5), so h = 0 and the histogram is null. n = 6, T = 10: the NULL row scales to (2 x 1 x 10 + 6) / 12 = 2, 1 to (2 x 2 x 10 + 6) / 12 = 3 and 2 to (2 x 3 x 10 + 6) / 12 = 5.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 10,
+    "sample_null_rows": 1,
+    "sample_values": [
+      {"value": "2", "rows": 3},
+      {"value": "1", "rows": 2}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 2,
+      "mcv": [
+        {"value": "1", "rows": 3},
+        {"value": "2", "rows": 5}
+      ],
+      "histogram": null,
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 10,
+        "sample_rows": 6,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

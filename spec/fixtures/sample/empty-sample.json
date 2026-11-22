@@ -1,0 +1,29 @@
+{
+  "description": "No sampled rows: n = 0, so scale(c) is 0 whatever T is. There are no common values and no histogram, and the input describes no rows; the plan warns no_rows.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 500,
+    "sample_null_rows": 0,
+    "sample_values": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 0,
+      "mcv": [],
+      "histogram": null,
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 500,
+        "sample_rows": 0,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

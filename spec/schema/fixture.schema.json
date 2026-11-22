@@ -34,7 +34,7 @@
     "value": {"type": "string"},
     "type": {"enum": ["int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz"]},
     "scale": {"type": "integer", "minimum": 0, "maximum": 1000},
-    "spec_version": {"const": "1.0"},
+    "spec_version": {"const": "1.1"},
     "input": {
       "description": "A valid planner input (spec section 1).",
       "type": "object",

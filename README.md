@@ -28,7 +28,9 @@ clauses.
 skewsplit writes those clauses. It:
 
 - reads the column's statistics (for PostgreSQL, `pg_stats`: most common values
-  and an equi-depth histogram), so planning does not scan the table;
+  and an equi-depth histogram), so planning does not scan the table, or, when
+  they are missing or out of date, a sample of the table, which the database
+  counts so that only one row per value reaches skewsplit;
 - plans ranges of roughly equal *row counts* that the database can answer from
   an index on the column;
 - gives `NULL` rows their own `col IS NULL` predicate, and gives a value that
@@ -136,8 +138,8 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
-| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table |
-| `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads from `pg_stats`, as `skewsplit.plan` takes it |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up, and `statement_timeout_ms` bounds each query of either strategy |
+| `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads, as `skewsplit.plan` takes it. It takes the same options |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
 | `skewsplit.postgres.Verification` | What `verify` found |
@@ -154,6 +156,10 @@ skewsplit plan   --table T --column C --partitions N [--format text|json|pyspark
 skewsplit verify --table T (--plan FILE | --column C --partitions N)
                  [--counts] [--statement-timeout-ms MS] [--format text|json]
 skewsplit stats  --table T --column C [--partitions N]
+
+planning options of plan, stats, and verify without --plan:
+  [--strategy statistics|sample] [--sample-rows N] [--max-sample-rows N] [--seed N]
+  [--statement-timeout-ms MS]
 ```
 
 - `plan` prints the predicates and the skew report, the plan as JSON, or
@@ -164,6 +170,23 @@ skewsplit stats  --table T --column C [--partitions N]
   rows of each predicate, one query each, for the actual skew.
 - `stats` prints the column's distribution as JSON, which `skewsplit.plan`
   takes. With `--partitions`, it is the complete planner input of the spec.
+
+By default, planning reads `pg_stats`. When the statistics are missing or out
+of date, `--strategy sample` reads a sample of the table instead, as spec
+section 14 describes:
+
+- the planner's row estimate sets the share to sample, for about
+  `--sample-rows` rows (30000 by default, what `ANALYZE` reads);
+- a table that small is read whole; up to ten times larger, `TABLESAMPLE
+  BERNOULLI` picks rows one by one but reads every page; larger still,
+  `TABLESAMPLE SYSTEM` reads only that share of the pages;
+- `--max-sample-rows` (ten times `--sample-rows` by default) caps the rows
+  the sample reads, and the database counts them by value, so only one row per
+  distinct value reaches skewsplit;
+- `--seed` makes the sample the same on every run while the table does not
+  change.
+
+The report says how many rows the sample read and how long planning took.
 
 For a column with the statistics of the quick start, `plan` prints:
 
@@ -202,7 +225,8 @@ answer it, so every partition reads the whole table. Prefer it when:
 
 - the column's type is not one skewsplit supports (see below), such as `text`
   or `uuid`;
-- the table has no statistics you can trust and you cannot run `ANALYZE`;
+- the table has no statistics you can trust, you cannot run `ANALYZE`, and a
+  sample (`--strategy sample`) would cost too much;
 - the table is small enough that reading it once per partition costs nothing.
 
 Neither method can split a value that holds more rows than a partition should:
@@ -218,10 +242,15 @@ column, such as the primary key, instead.
     top. A higher statistics target (`ALTER TABLE ... ALTER COLUMN ... SET
     STATISTICS`, then `ANALYZE`) gives a finer histogram;
   - when more than a tenth of the rows changed since the last `ANALYZE`, the
-    plan warns `stale_statistics`. Run `ANALYZE` and plan again.
+    plan warns `stale_statistics`. Run `ANALYZE` and plan again, or plan from
+    a sample.
 
-  The predicates still match every row exactly once, and `skewsplit verify`
-  checks that on the real table.
+  A plan from a sample has its sampling error. `TABLESAMPLE SYSTEM` takes
+  whole pages, so on a column whose values follow the order of the rows on
+  disk, such as an increasing key, a larger `--sample-rows` helps more than it
+  seems to. The predicates still match every row exactly once, and
+  `skewsplit verify` checks that on the real table, with `--counts` the actual
+  skew too.
 - **Dominant values.** A value with at least one partition's share of the rows
   gets its own `col = value` predicate and the warning `dominant_value`. No
   plan on this column can make that partition smaller. With too few
@@ -235,7 +264,10 @@ column, such as the primary key, instead.
 - **Tables.** Tables, partitioned tables, materialized views and foreign
   tables, in PostgreSQL only. The role needs `SELECT` on the column, and no
   row-level security may apply to it: otherwise `pg_stats` hides the
-  statistics, and planning fails with `permission_denied`.
+  statistics, and planning fails with `permission_denied`. The sample
+  strategy checks the same. PostgreSQL cannot apply `TABLESAMPLE` to a
+  foreign table, so the sample strategy fails on one larger than the sample
+  size, with PostgreSQL's error.
 
 ## Supported versions
 

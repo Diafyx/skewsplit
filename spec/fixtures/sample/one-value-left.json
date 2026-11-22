@@ -1,0 +1,40 @@
+{
+  "description": "S = 4: 8 is common with 3 rows and 9 is sampled once. The list is just 9, so h = 1, m = max(1, 0) = 1 and both bounds are at position 0: the bucket holds all its rows at 9. n = 5, T = 50: 8 has (2 x 3 x 50 + 5) / 10 = 30 rows, the NULLs (2 x 1 x 50 + 5) / 10 = 10, and H = 50 - 10 - 30 = 10.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 50,
+    "sample_null_rows": 1,
+    "sample_values": [
+      {"value": "9", "rows": 1},
+      {"value": "8", "rows": 3}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 10,
+      "mcv": [
+        {"value": "8", "rows": 30}
+      ],
+      "histogram": {
+        "bounds": [
+          "9",
+          "9"
+        ],
+        "rows": 10
+      },
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 50,
+        "sample_rows": 5,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

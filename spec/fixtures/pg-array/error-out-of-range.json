@@ -5,7 +5,7 @@
     "type": "int2"
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "error": {
       "code": "value_out_of_range"
     }

@@ -1,0 +1,29 @@
+{
+  "description": "T = 2^63 - 1, the largest row count, and a sample of 3 NULL rows: null_rows = (2 x 3 x T + 3) / 6 = T. 2 x c x T fits in a signed 128-bit integer.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 9223372036854775807,
+    "sample_null_rows": 3,
+    "sample_values": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "input": {
+      "column": "c",
+      "type": "int4",
+      "partitions": 4,
+      "null_rows": 9223372036854775807,
+      "mcv": [],
+      "histogram": null,
+      "source": {
+        "statistics": "sample",
+        "rows_estimate": 9223372036854775807,
+        "sample_rows": 3,
+        "unestimated_rows": 0,
+        "warnings": []
+      }
+    }
+  }
+}

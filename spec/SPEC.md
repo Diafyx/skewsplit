@@ -1,6 +1,6 @@
 # skewsplit behaviour spec
 
-Spec version: **1.0**
+Spec version: **1.1**
 
 This is the contract every skewsplit implementation follows. Given the same
 input, every implementation produces the same output, byte for byte in each
@@ -28,6 +28,7 @@ Contents:
 11. [Versioning](#11-versioning)
 12. [PostgreSQL array text](#12-postgresql-array-text)
 13. [Statistics from PostgreSQL](#13-statistics-from-postgresql)
+14. [Distribution from a sample](#14-distribution-from-a-sample)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point.
@@ -416,7 +417,7 @@ fixture has exactly one.
 | `invalid_column` | The column name is empty or contains U+0000 |
 | `unsupported_type` | The type is not in section 2; `scale` is missing for `numeric`, given for another type, or outside 0 to 1000 |
 | `invalid_partitions` | `partitions` is not between 1 and 10000 |
-| `invalid_rows` | A row count is negative, an `mcv` row count is 0, or `total_rows` exceeds 2^63 - 1 |
+| `invalid_rows` | A row count is negative, an `mcv` row count is 0, or `total_rows` exceeds 2^63 - 1. When converting a sample (section 14), also a sampled count out of its range |
 | `invalid_value` | A value is not in the text form of its type |
 | `value_out_of_range` | A value's ordinal is outside the type's range |
 | `duplicate_value` | Two `mcv` entries have the same value |
@@ -433,7 +434,7 @@ A plan is one JSON object. For the input in section 1:
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "column": "customer_id",
   "type": "int4",
   "requested_partitions": 4,
@@ -467,7 +468,7 @@ A plan is one JSON object. For the input in section 1:
 - `skew_score` is a JSON number equal to `k / 1000`, or `null`.
 - `source` is the input's `source`, or `null` when the input has none.
 - The order of keys in an object does not matter; the order of arrays does.
-- An error is the object `{"spec_version": "1.0", "error": {"code": ..., "message": ...}}`.
+- An error is the object `{"spec_version": "1.1", "error": {"code": ..., "message": ...}}`.
 
 ## 11. Versioning
 
@@ -480,13 +481,20 @@ follows, and every plan carries it in `spec_version`.
   object keys, such as a new optional input field or a new type. Readers must
   ignore keys they do not know.
 
-**Example.** Supporting a `uuid` column is a minor change: 1.0 to 1.1.
+**Example.** Supporting a `uuid` column would be a minor change: 1.1 to 1.2.
 Rounding the targets in section 4.3 up instead of down changes existing plans,
-so it is a major change: 1.1 to 2.0.
+so it would be a major change: 1.1 to 2.0.
+
+A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
+
+| Version | Change |
+|---------|--------|
+| 1.0 | The first version |
+| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
-to the spec changes the fixtures in the same pull request. Until the first
-release that implements version 1.0, version 1.0 itself may still change.
+to the spec changes the fixtures in the same pull request. Once a release
+implements a version, that version no longer changes.
 
 ## 12. PostgreSQL array text
 
@@ -723,3 +731,140 @@ estimated and the actual rows below it lie between `(i - 1) × H / m` and
 The PostgreSQL integration tests check these bounds on uniform, dominant-value,
 NULL-heavy and gapped columns, on dates and timestamps, and on partitioned and
 inheritance trees.
+
+## 14. Distribution from a sample
+
+When a table has no statistics, or they are stale, an adapter can read a
+sample of the column instead. This section turns a sample into the input of
+section 1, so that every implementation builds the same input from the same
+sample. Like section 13, it never reads the table itself.
+
+**Conversion input.** One JSON object:
+
+| Field | Meaning |
+|-------|---------|
+| `column`, `type`, `scale`, `partitions` | As in section 1. They are copied to the result |
+| `rows_estimate` | `T`, the estimated rows of the whole table. 0 to 2^63 - 1 |
+| `sample_null_rows` | The sampled rows where the column is NULL. At least 0 |
+| `sample_values` | Each distinct non-NULL value of the sample, with how many sampled rows have it (`rows`, at least 1). Values are in the text form of section 2, or one of the special values below. They are distinct; the order does not matter |
+
+`n`, the size of the sample, is `sample_null_rows` plus the rows of every
+entry of `sample_values`. It must be at most 2^63 - 1.
+
+**Scaling.** Each sampled row stands for `T / n` rows of the table. A count
+`c` of sampled rows scales to `scale(c) = (2 × c × T + n) / (2 × n)`, which is
+`c × T / n` rounded half up. When `n` is 0, `scale(c)` is 0.
+
+**Special values.** As in section 13, `infinity` and `-infinity` for `date`,
+`timestamp` and `timestamptz`, and `NaN`, `Infinity` and `-Infinity` for
+`numeric`, have no ordinal. They are left out of the estimate, and
+`unestimated_rows` is `scale` of their sampled rows. The predicates still
+cover them (section 6).
+
+**Common values.** Call the other non-NULL values *ordinary*, and let `S` be
+their sampled rows. An ordinary value with `c` sampled rows is a common value
+when `c ≥ 2` and `c × 1000 ≥ S`, and it has `max(1, scale(c))` rows. So there
+are at most 1000 common values.
+
+**Histogram.** Write the ordinary values that are not common in order, each
+repeated as often as it was sampled: a list of `h` values. When `h` is 0, the
+histogram is `null`. Otherwise it has `m = min(1000, max(1, h - 1))` buckets,
+and bound `j`, for `j` from 0 to `m`, is the value at position
+`j × (h - 1) / m` of the list, counting from 0. This is where `ANALYZE` puts
+its bounds (section 13, Accuracy). The histogram holds
+`H = max(0, T - null_rows - the rows of all common values - unestimated_rows)`
+rows.
+
+**Result.** The input of section 1, with `null_rows` = `scale(sample_null_rows)`,
+the common values in `mcv` in order of ordinal, the histogram above, and this
+`source`:
+
+```json
+{
+  "statistics": "sample",
+  "rows_estimate": 1000,
+  "sample_rows": 15,
+  "unestimated_rows": 0,
+  "warnings": []
+}
+```
+
+`sample_rows` is `n`. `source.warnings` has `special_values_left_out`, with
+`rows` equal to `unestimated_rows`, when `unestimated_rows` is above 0, as in
+section 13. The result must be a valid input of section 1. If it is not, the
+error is the one of section 9. Adapters may add fields to `source`, and
+warnings after these.
+
+**Errors.** A field that is missing, unknown or of the wrong JSON type gives
+`invalid_input`. A negative `rows_estimate` or `sample_null_rows`, an entry
+with fewer than 1 row, or `T` or `n` above 2^63 - 1 gives `invalid_rows`. A
+value that is not in its type's text form, and not special, gives
+`invalid_value` or `value_out_of_range` as in section 2. The same value twice
+gives `duplicate_value`.
+
+**Example.** An `int4` column with `T` = 1000, and a sample of 15 rows: 2
+NULL, 6 at `42`, 2 at `12`, and one each at `1`, `3`, `7`, `20` and `30`.
+Then `S` = 13, so a value is common with at least 2 sampled rows:
+`42` and `12`. `null_rows` is (2 × 2 × 1000 + 15) / 30 = 133, `12` has 133
+rows and `42` has (2 × 6 × 1000 + 15) / 30 = 400. The other values make a
+list of `h` = 5, so `m` = 4 and the bounds are positions 0 to 4: `1`, `3`,
+`7`, `20` and `30`. `H` is 1000 - 133 - 533 = 334.
+
+The cases in `spec/fixtures/sample/` check this section.
+
+### Reading a sample
+
+An adapter reads the sample in one read-only transaction that it rolls back,
+with `DateStyle` set to ISO and `TimeZone` set to UTC for that transaction
+only, so the caller's settings and transaction are left as they were. A
+`statement_timeout` can bound each query. It takes a target sample size `s`
+(30000 by default, which is how many rows `ANALYZE` reads at the default
+statistics target) and a cap `C` on the rows it reads (10 × `s` by default).
+
+1. `E` is the planner's estimate of the rows of the table, its partitions and
+   its inheritance children: the `Plan Rows` of
+   `EXPLAIN (FORMAT JSON) SELECT FROM table`, at least 1. PostgreSQL estimates
+   it from the table's size when there are no statistics.
+2. The sampling method:
+   - When `E ≤ s`, every row is read, without `TABLESAMPLE`.
+   - Otherwise the percentage is `p = 100 × s / E`. When `p` is 10 or more,
+     `TABLESAMPLE BERNOULLI (p)`: each row is picked on its own, but every page
+     is read. Below 10, `TABLESAMPLE SYSTEM (p)`: it reads only about `p`% of
+     the pages, but takes every row of each page it picks. BERNOULLI is then
+     chosen when it reads at most 10 times as many pages as SYSTEM would.
+   - With a seed, `REPEATABLE (seed)`: the same seed picks the same sample from
+     the same table, as long as its rows stay on the same pages.
+3. At most `C` sampled rows are read, and only each distinct value and its
+   count reach the client:
+   `SELECT v::text, count(*) FROM (SELECT column AS v FROM table TABLESAMPLE ... LIMIT C) AS s GROUP BY v`.
+4. `T` is `n` when every row was read, and `n × 100 / p`, rounded half up,
+   when a sample was taken.
+   When the sample reaches the cap (`n = C`), it may hold only the rows read
+   first, and `T` is the larger of `E` and `n`.
+
+SYSTEM samples whole pages. When a column's values follow the order of the
+rows on disk, such as an increasing key or an insert time, each page holds a
+narrow range of values, so the sample tells less about the ranges than its
+size suggests. A larger `s` helps, and verify mode measures the real skew.
+
+The adapter adds these fields to `source`:
+
+| Field | Meaning |
+|-------|---------|
+| `table` | The schema-qualified table name, quoted where SQL needs it |
+| `method` | `all`, `bernoulli` or `system` |
+| `percent` | `p`, or `null` when every row was read |
+| `seed` | The seed, or `null` without one or when every row was read |
+| `planner_rows` | `E` |
+| `sample_limit` | `C` |
+| `planning_ms` | As in section 13 |
+
+When the sample reaches the cap, it adds the warning `sample_limit_reached`,
+with `rows` equal to `C`, after the warnings above.
+
+The sample is random, so two runs without a seed can give different plans,
+and the estimates have a sampling error on top of the error of section 13,
+Accuracy. When every row was read and the cap was not reached, `T` is `n`, so
+`scale(c)` is `c` and `H` is `h`. If no value is special and the table has
+not changed since, the NULL and value predicates are then exact, and every
+range predicate reads within `2 × B` rows of its estimate, as in section 13.

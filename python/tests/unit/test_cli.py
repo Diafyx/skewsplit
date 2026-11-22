@@ -61,14 +61,19 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> Fake:
         db.calls.append(("connect", dsn, secrets))
         return nullcontext(conn)
 
-    def fake_plan(used: object, table: str, column: str, partitions: int) -> object:
+    # The options are recorded only when given, as the CLI passes them.
+    def fake_plan(
+        used: object, table: str, column: str, partitions: int, **options: object
+    ) -> object:
         assert used is conn
-        db.answer("plan", table, column, partitions)
+        db.answer("plan", table, column, partitions, *([options] if options else []))
         return replace(PLAN, requested_partitions=partitions)
 
-    def fake_distribution(used: object, table: str, column: str) -> dict[str, object]:
+    def fake_distribution(
+        used: object, table: str, column: str, **options: object
+    ) -> dict[str, object]:
         assert used is conn
-        db.answer("distribution", table, column)
+        db.answer("distribution", table, column, *([options] if options else []))
         return dict(SECTION_1)
 
     def fake_verify(
@@ -329,7 +334,7 @@ def test_verify_plans_then_checks(capsys: pytest.CaptureFixture[str], fake: Fake
     assert (code, err) == (cli.OK, "")
     assert out == f"OK: each of the 1060 rows of {TABLE} matches exactly one predicate\n"
     assert fake.calls[1:] == [
-        ("plan", TABLE, "customer_id", 4),
+        ("plan", TABLE, "customer_id", 4, {"statement_timeout_ms": 500}),
         (
             "verify",
             TABLE,
@@ -440,8 +445,9 @@ def predicates_with(**changes: object) -> list[object]:
     ("data", "message"),
     [
         ([], "is not a JSON object"),
-        (plan_with(spec_version="2.0"), "needs spec_version '1.0'"),
-        ({"column": "c"}, "needs spec_version '1.0'"),
+        (plan_with(spec_version="2.0"), "needs a spec_version from 1.0 to 1.1"),
+        (plan_with(spec_version="1.2"), "needs a spec_version from 1.0 to 1.1"),
+        ({"column": "c"}, "needs a spec_version from 1.0 to 1.1"),
         (plan_with(column=None), "needs a column and requested_partitions"),
         (plan_with(requested_partitions="4"), "needs a column and requested_partitions"),
         (plan_with(requested_partitions=True), "needs a column and requested_partitions"),
@@ -497,3 +503,137 @@ def test_a_plan_on_standard_input_that_is_not_json(
     assert code == cli.INVALID
     assert err.startswith("skewsplit: the plan on standard input is not JSON: ")
     assert fake.calls == []
+
+
+# Strategies
+
+
+STATS_ARGS = ("stats", "--table", TABLE, "--column", "customer_id")
+
+
+def test_the_strategies_are_the_adapters() -> None:
+    from skewsplit.postgres import planning, sample  # noqa: PLC0415
+
+    assert cli.STRATEGIES == planning.STRATEGIES
+    assert cli.SAMPLE_ROWS == sample.DEFAULT_SAMPLE_ROWS
+
+
+@pytest.mark.parametrize(
+    ("given", "options"),
+    [
+        ((), {}),
+        (("--strategy", "statistics"), {}),
+        (("--strategy", "statistics", "--statement-timeout-ms", "9"), {"statement_timeout_ms": 9}),
+        (("--strategy", "sample"), {"strategy": "sample"}),
+        (
+            (
+                "--strategy",
+                "sample",
+                "--sample-rows",
+                "500",
+                "--max-sample-rows",
+                "800",
+                "--seed",
+                "-3",
+                "--statement-timeout-ms",
+                "1000",
+            ),
+            {
+                "strategy": "sample",
+                "sample_rows": 500,
+                "max_sample_rows": 800,
+                "seed": -3,
+                "statement_timeout_ms": 1000,
+            },
+        ),
+        (("--strategy", "sample", "--seed", "0"), {"strategy": "sample", "seed": 0}),
+        (
+            ("--strategy", "sample", "--max-sample-rows", "30000"),
+            {"strategy": "sample", "max_sample_rows": 30000},
+        ),
+    ],
+)
+def test_plan_stats_and_verify_pass_the_planning_options(
+    capsys: pytest.CaptureFixture[str], fake: Fake, given: tuple[str, ...], options: dict[str, Any]
+) -> None:
+    extra = [options] if options else []
+    assert run(capsys, *PLAN_ARGS, *given)[0] == cli.OK
+    assert run(capsys, *STATS_ARGS, *given)[0] == cli.OK
+    assert run(capsys, *VERIFY_ARGS, *FRESH, *given)[0] == cli.OK
+    planned = [call for call in fake.calls if call[0] in {"plan", "distribution"}]
+    assert planned == [
+        ("plan", TABLE, "customer_id", 4, *extra),
+        ("distribution", TABLE, "customer_id", *extra),
+        ("plan", TABLE, "customer_id", 4, *extra),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        ((*PLAN_ARGS, "--strategy", "exact"), "invalid choice: 'exact'"),
+        ((*PLAN_ARGS, "--sample-rows", "5"), "need --strategy sample"),
+        ((*STATS_ARGS, "--max-sample-rows", "5"), "need --strategy sample"),
+        ((*VERIFY_ARGS, *FRESH, "--seed", "5"), "need --strategy sample"),
+        ((*PLAN_ARGS, "--strategy", "statistics", "--seed", "5"), "need --strategy sample"),
+        ((*PLAN_ARGS, "--strategy", "sample", "--sample-rows", "0"), "must be a positive"),
+        ((*PLAN_ARGS, "--strategy", "sample", "--seed", "x"), "invalid int value"),
+        (
+            (*PLAN_ARGS, "--strategy", "sample", "--max-sample-rows", "29999"),
+            "--max-sample-rows must be at least the sample size, 30000",
+        ),
+        (
+            (*PLAN_ARGS, "--strategy", "sample", "--sample-rows", "10", "--max-sample-rows", "9"),
+            "--max-sample-rows must be at least the sample size, 10",
+        ),
+        ((*STATS_ARGS, "--statement-timeout-ms", "0"), "must be a positive"),
+        ((*VERIFY_ARGS, "--plan", "p.json", "--strategy", "statistics"), "not for --plan"),
+        ((*VERIFY_ARGS, "--plan", "p.json", "--strategy", "sample"), "not for --plan"),
+    ],
+)
+def test_planning_options_that_do_not_fit(
+    capsys: pytest.CaptureFixture[str], fake: Fake, argv: tuple[str, ...], message: str
+) -> None:
+    assert message in usage_error(capsys, *argv)
+    assert fake.calls == []
+
+
+def test_verify_with_a_plan_takes_the_timeout_for_the_check_only(
+    capsys: pytest.CaptureFixture[str], fake: Fake, tmp_path: Path
+) -> None:
+    path = write_plan(tmp_path, PLAN.to_dict())
+    argv = (*VERIFY_ARGS, "--plan", path, "--statement-timeout-ms", "40")
+    assert run(capsys, *argv)[0] == cli.OK
+    [(_, *verified)] = [call for call in fake.calls if call[0] != "connect"]
+    assert verified[-1] == {"counts": False, "statement_timeout_ms": 40}
+
+
+@pytest.mark.parametrize(
+    ("version", "readable"),
+    [
+        ("1.0", True),
+        ("1.1", True),
+        ("1.2", False),
+        ("2.0", False),
+        ("0.9", False),
+        ("1.01", False),
+        ("01.1", False),
+        ("1.1 ", False),
+        ("1", False),
+        ("1.\u0661", False),  # an Arabic-Indic digit one
+        (1.1, False),
+        (None, False),
+    ],
+)
+def test_verify_reads_plans_of_this_major_version_up_to_this_minor(
+    version: object, *, readable: bool
+) -> None:
+    assert cli.readable(version) is readable
+
+
+@pytest.mark.usefixtures("fake")
+def test_verify_reads_a_plan_of_spec_version_1_0(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    path = write_plan(tmp_path, plan_with(spec_version="1.0"))
+    assert run(capsys, *VERIFY_ARGS, "--plan", path)[0] == cli.OK

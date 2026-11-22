@@ -6,9 +6,11 @@ if the system has none.
 
 :func:`plan` reads the column's statistics from ``pg_stats`` and never scans
 the table, and :func:`distribution` returns what it read, for
-:func:`skewsplit.plan`. :func:`verify` scans the table once, to check that
-every row matches exactly one predicate. They all take a libpq connection
-string or an open connection, which they leave as it was.
+:func:`skewsplit.plan`. With ``strategy="sample"``, both read a sample of the
+table instead, for when the statistics are missing or out of date.
+:func:`verify` scans the table once, to check that every row matches exactly
+one predicate. They all take a libpq connection string or an open connection,
+which they leave as it was.
 
 >>> import psycopg
 >>> import skewsplit.postgres
@@ -24,6 +26,12 @@ The predicates are the list Spark's JDBC reader takes::
 
     result = skewsplit.postgres.plan("dbname=shop", "orders", "customer_id", 16)
     orders = spark.read.jdbc(url, "orders", predicates=result.predicates, properties=properties)
+
+From a sample of about 30000 rows, the same with a seed on every run::
+
+    result = skewsplit.postgres.plan(
+        "dbname=shop", "orders", "customer_id", 16, strategy="sample", seed=7
+    )
 """
 
 from __future__ import annotations
@@ -38,8 +46,7 @@ except ModuleNotFoundError as error:
     raise ModuleNotFoundError(msg, name="psycopg") from error
 
 from skewsplit.postgres.catalog import CatalogError, CatalogErrorCode
-from skewsplit.postgres.statistics import distribution
-from skewsplit.postgres.statistics import plan_from_statistics as plan
+from skewsplit.postgres.planning import distribution, plan
 from skewsplit.postgres.verify import Verification, verify, verify_plan
 
 __all__ = [

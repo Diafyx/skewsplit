@@ -1,0 +1,17 @@
+{
+  "description": "The result has an empty column name, which is not a valid planner input.",
+  "input": {
+    "column": "",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 1000,
+    "sample_null_rows": 0,
+    "sample_values": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_column"
+    }
+  }
+}

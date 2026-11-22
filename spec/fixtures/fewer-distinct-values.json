@@ -22,7 +22,7 @@
     "histogram": null
   },
   "expected": {
-    "spec_version": "1.0",
+    "spec_version": "1.1",
     "column": "grade",
     "type": "int2",
     "requested_partitions": 8,

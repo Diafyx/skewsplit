@@ -33,7 +33,8 @@ _ARRAYS: Final = ("most_common_vals", "most_common_freqs", "histogram_bounds")
 _NUMBER: Final = re.compile(r"(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:e([+-][0-9]{2,3}))?")
 _MAX_NUMBER_LENGTH: Final = 40
 _TIME_SPECIAL: Final = frozenset({"infinity", "-infinity"})
-_SPECIAL: Final = {
+# The special values of each type, as PostgreSQL prints them; none has an ordinal.
+SPECIAL_VALUES: Final = {
     "numeric": frozenset({"NaN", "Infinity", "-Infinity"}),
     "date": _TIME_SPECIAL,
     "timestamp": _TIME_SPECIAL,
@@ -55,7 +56,7 @@ def from_pg_stats(data: object) -> dict[str, object]:
     if modified is not None and modified < 0:
         _fail("invalid_statistics", "modified_since_analyze must not be negative")
     codec = codec_for(fields["type"], fields.get("scale"))
-    special = _SPECIAL.get(codec.type_name, frozenset())
+    special = SPECIAL_VALUES.get(codec.type_name, frozenset())
     if not fields["reltuples"]:
         _fail("invalid_statistics", "reltuples needs at least one row count")
     total = sum((_number(text, "reltuples") for text in fields["reltuples"]), Fraction(0))

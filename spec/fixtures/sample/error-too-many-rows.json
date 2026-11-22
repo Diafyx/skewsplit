@@ -1,0 +1,19 @@
+{
+  "description": "T = 2^63 - 1 is odd, n = 4: the 2 NULL rows and the common value 5 (2 rows) each scale to (2 x 2 x T + 4) / 8 = (T + 1) / 2, rounded half up. Together they are T + 1 rows, more than the planner input allows.",
+  "input": {
+    "column": "c",
+    "type": "int4",
+    "partitions": 4,
+    "rows_estimate": 9223372036854775807,
+    "sample_null_rows": 2,
+    "sample_values": [
+      {"value": "5", "rows": 2}
+    ]
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_rows"
+    }
+  }
+}

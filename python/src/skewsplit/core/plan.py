@@ -138,8 +138,8 @@ class Plan:
         A summary line, a line on the sample for a plan from one (spec
         section 14), each predicate with its estimated rows, and then a line
         for each warning: the plan's, followed by those in
-        ``source["warnings"]``, which the conversions of spec sections 13 and
-        14 add. The layout may change; read :meth:`to_dict` in code.
+        ``source["warnings"]``, which the adapters of spec sections 13 to 15
+        add. The layout may change; read :meth:`to_dict` in code.
         """
         kind = self.type_name if self.scale is None else f"{self.type_name}, scale {self.scale}"
         skew = "no skew score"

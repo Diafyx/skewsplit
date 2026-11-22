@@ -38,6 +38,10 @@ out of date, plan from a sample of the table instead:
 plan = postgres.plan(dsn, "public.orders", "customer_id", 16, strategy="sample", seed=7)
 ```
 
+When accuracy matters more than planning time, `strategy="exact"` reads every
+row. It scans the whole table three times and sorts the column, so set
+`statement_timeout_ms` on a large table.
+
 The planner itself needs no database:
 
 ```python
@@ -64,8 +68,8 @@ The planner itself needs no database:
 
 From the command line, `skewsplit plan --table public.orders --column
 customer_id --partitions 16` prints the same report, `--strategy sample`
-plans from a sample, and `--format pyspark` prints the code that reads the
-table.
+plans from a sample, `--strategy exact` from every row, and `--format pyspark`
+prints the code that reads the table.
 
 **The output contains real values from the column**: treat plans, reports and
 logs like the data they describe.

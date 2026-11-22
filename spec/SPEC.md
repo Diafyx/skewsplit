@@ -29,9 +29,11 @@ Contents:
 12. [PostgreSQL array text](#12-postgresql-array-text)
 13. [Statistics from PostgreSQL](#13-statistics-from-postgresql)
 14. [Distribution from a sample](#14-distribution-from-a-sample)
+15. [Exact quantiles](#15-exact-quantiles)
 
 In this document, `/` on integers is floor division, and every division is of
-a non-negative number by a positive one. No step uses floating point.
+a non-negative number by a positive one. No step uses floating point, apart
+from one fraction in section 15 that selects a position.
 
 ## 1. Input
 
@@ -490,7 +492,7 @@ A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
 | Version | Change |
 |---------|--------|
 | 1.0 | The first version |
-| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column |
+| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Once a release
@@ -868,3 +870,71 @@ Accuracy. When every row was read and the cap was not reached, `T` is `n`, so
 `scale(c)` is `c` and `H` is `h`. If no value is special and the table has
 not changed since, the NULL and value predicates are then exact, and every
 range predicate reads within `2 × B` rows of its estimate, as in section 13.
+
+## 15. Exact quantiles
+
+When accuracy matters more than planning time, an adapter can read every row
+of the table and build the input of section 1 from exact counts. It reads in
+one read-only transaction that it rolls back, as in section 14, with
+`DateStyle` set to ISO and `TimeZone` set to UTC for that transaction only,
+and a `statement_timeout` can bound each query. The table includes its
+partitions and inheritance children. The queries scan the whole table three
+times and sort the values that are not common once, so on a large table this
+takes far longer than sections 13 and 14.
+
+1. **Counts.** One query counts the rows of the table, the rows where the
+   column is NULL and the rows at a special value of section 14. The other
+   rows are *ordinary*. Let `R` be their number.
+2. **Common values.** An ordinary value is a common value when it has at
+   least `⌈R / 10000⌉` rows, and at least 1:
+   `GROUP BY column HAVING count(*) >= ⌈R / 10000⌉`. There are at most 10000
+   of them, and every candidate of section 4.1 is one, because `N` is at most
+   10000. `mcv` has their exact rows, in order of ordinal.
+3. **Histogram.** The ordinary values that are not common, in order, make a
+   list of `h` rows. When `h` is 0, the histogram is `null`. Otherwise it has
+   `m = min(10000, max(1, h - 1))` buckets, and bound `j`, for `j` from 0 to
+   `m`, is the value at position `j × (h - 1) / m` of the list, counting from
+   0, as in sections 13 and 14. One query reads every bound and counts the
+   rows the histogram holds, `H`:
+   `count(*)` and `percentile_disc(fractions) WITHIN GROUP (ORDER BY column)`.
+   `percentile_disc(f)` returns the value at position `⌈f × h⌉ - 1`, so the
+   fraction for position `p` is `(p + 0.5) / h`. Its floating-point rounding
+   cannot move it to another position while `h` is below 2^51.
+
+**Result.** The input of section 1, with the NULL rows counted in step 1,
+`mcv` and the histogram above, and this `source`:
+
+```json
+{
+  "statistics": "exact",
+  "table": "public.orders",
+  "rows": 1060,
+  "unestimated_rows": 0,
+  "warnings": []
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `table` | The schema-qualified table name, quoted where SQL needs it |
+| `rows` | The rows of the table |
+| `unestimated_rows` | The rows at a special value |
+| `planning_ms` | In a plan only: as in section 13 |
+
+`source.warnings` has `special_values_left_out`, with `rows` equal to
+`unestimated_rows`, when `unestimated_rows` is above 0, as in section 13.
+
+**Example.** A table of 25000 ordinary rows. `⌈25000 / 10000⌉` is 3, so a
+value is common with at least 3 rows. Say all but four rows have such values,
+and the four are `1`, `5`, `5` and `9`. Then `h` is 4. Then `m` is 3, the
+positions are 0, 1, 2 and 3, and the bounds are `1`, `5`, `5` and `9`, read
+with the fractions 0.125, 0.375, 0.625 and 0.875.
+
+**Accuracy.** When the table does not change during or after planning, the
+NULL and value predicates are exact, and every range predicate reads within
+`2 × B` rows of its estimate, where `B = ⌈H / m⌉`, by the argument of
+section 13, Accuracy. A table with fewer than 10000 ordinary rows has no
+histogram, because every value has at least 1 row and is common, so all of
+its predicates are exact. A table that changes between the queries can make
+`H` differ from `h`, but the input stays valid, because `H` is counted by the
+query that reads the bounds, and that query leaves out the common values.

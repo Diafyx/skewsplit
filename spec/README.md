@@ -56,6 +56,10 @@ values with their counts. `expected` is `spec_version` with either the planner
 `input` that the conversion builds, or an `error` code, under the same rules
 as the statistics fixtures.
 
+Spec section 15, exact quantiles, has no fixtures. It defines the queries
+an adapter runs, and their results are already the planner input. Each
+implementation's PostgreSQL integration tests check it.
+
 ## Checks
 
 `make check-fixtures` validates every fixture against the schema, then runs

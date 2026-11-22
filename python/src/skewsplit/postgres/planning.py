@@ -1,14 +1,16 @@
-"""Plan from a table's statistics or from a sample of it: the strategy is the caller's choice.
+"""Plan from a table's statistics, a sample of it or every row: the strategy is the caller's choice.
 
 ``statistics`` reads ``pg_stats`` and never the table (spec section 13).
 ``sample`` reads a sample of the table with ``TABLESAMPLE`` (section 14), for
-when the statistics are missing or out of date.
+when the statistics are missing or out of date. ``exact`` reads every row
+(section 15), for when accuracy matters more than planning time.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from skewsplit.postgres.exact import exact_distribution, plan_from_exact
 from skewsplit.postgres.sample import DEFAULT_SAMPLE_ROWS, plan_from_sample, sample_distribution
 from skewsplit.postgres.statistics import distribution as statistics_distribution
 from skewsplit.postgres.statistics import plan_from_statistics
@@ -18,8 +20,8 @@ if TYPE_CHECKING:
 
     from skewsplit.core.plan import JSON, Plan
 
-Strategy = Literal["statistics", "sample"]
-STRATEGIES: Final[tuple[Strategy, ...]] = ("statistics", "sample")
+Strategy = Literal["statistics", "sample", "exact"]
+STRATEGIES: Final[tuple[Strategy, ...]] = ("statistics", "sample", "exact")
 
 
 def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
@@ -43,8 +45,9 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
             left open and with its settings and transaction as they were.
         table: The table as SQL names it, as for :func:`find_column`.
         column: The column's exact name, not quoted.
-        strategy: ``statistics`` to read ``pg_stats``, or ``sample`` to read
-            a sample of the table.
+        strategy: ``statistics`` to read ``pg_stats``, ``sample`` to read a
+            sample of the table, or ``exact`` to read every row: it scans the
+            whole table three times and sorts the column.
         sample_rows: For ``sample``: about how many rows to sample, 30000 by
             default.
         max_sample_rows: For ``sample``: the most rows the sample may read,
@@ -52,7 +55,7 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
         seed: For ``sample``: a ``REPEATABLE`` seed, so that the same table
             gives the same sample.
         statement_timeout_ms: A ``statement_timeout`` for each query that
-            reads the statistics or the sample, in milliseconds.
+            reads the statistics or the table, in milliseconds.
 
     Raises:
         CatalogError: If the column cannot be split, or has no statistics
@@ -62,7 +65,12 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
             or given for the other strategy.
         psycopg.Error: If a query fails or was cancelled by the timeout.
     """
-    if _sampling(strategy, sample_rows, max_sample_rows, seed):
+    chosen = _strategy(strategy, sample_rows, max_sample_rows, seed)
+    if chosen == "exact":
+        return exact_distribution(
+            database, table, column, statement_timeout_ms=statement_timeout_ms
+        )
+    if chosen == "sample":
         return sample_distribution(
             database,
             table,
@@ -96,7 +104,12 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     ``source`` also has ``planning_ms``: the time spent finding the column,
     reading its distribution and planning.
     """
-    if _sampling(strategy, sample_rows, max_sample_rows, seed):
+    chosen = _strategy(strategy, sample_rows, max_sample_rows, seed)
+    if chosen == "exact":
+        return plan_from_exact(
+            database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+        )
+    if chosen == "sample":
         return plan_from_sample(
             database,
             table,
@@ -112,14 +125,14 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     )
 
 
-def _sampling(
+def _strategy(
     strategy: str, sample_rows: int | None, max_sample_rows: int | None, seed: int | None
-) -> bool:
-    """Whether the strategy is ``sample``, after checking the options fit it."""
+) -> Strategy:
+    """Return the strategy, after checking that it is known and the options fit it."""
     if strategy not in STRATEGIES:
         msg = f"strategy must be one of {', '.join(STRATEGIES)}, not {strategy!r}"
         raise ValueError(msg)
-    if strategy == "statistics" and (sample_rows, max_sample_rows, seed) != (None, None, None):
+    if strategy != "sample" and (sample_rows, max_sample_rows, seed) != (None, None, None):
         msg = "sample_rows, max_sample_rows and seed are for strategy='sample'"
         raise ValueError(msg)
-    return strategy == "sample"
+    return strategy

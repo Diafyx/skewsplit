@@ -1,0 +1,15 @@
+{
+  "run_url": "https://github.com/Diafyx/skewsplit/actions/runs/45030759209",
+  "rows": 15000000,
+  "partitions": 16,
+  "max_task_seconds": {
+    "customer_id": {
+      "skewsplit statistics": 2.946,
+      "skewsplit sample": 3.011
+    },
+    "created_at": {
+      "skewsplit statistics": 2.949,
+      "skewsplit sample": 2.668
+    }
+  }
+}

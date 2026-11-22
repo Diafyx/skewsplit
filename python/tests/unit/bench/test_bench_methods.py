@@ -1,44 +1,71 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from contextlib import closing
+from typing import TYPE_CHECKING
 
 import pytest
 
 from bench_methods import (
+    METHODS,
+    STRATEGIES,
     bounds_query,
     hash_mod,
-    literal,
-    quantile_query,
-    quantile_ranges,
+    plan_path,
     quote,
+    read_plan,
+    strategy_of,
 )
+from skewsplit.core.planner import plan
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def pg_mod(sql: str) -> str:
+    """PostgreSQL's hash-mod predicate, with a stand-in hash SQLite knows."""
+    return re.sub(r"hashtextextended\(\"c\"::text, 0\)", '("c" * 7919 - 50000)', sql)
 
 
 def matches(predicates: list[str], values: list[int | None]) -> dict[int | None, int]:
-    """How many predicates each value matches, run in SQLite.
-
-    SQLite has no ``::`` casts, so integer literals lose theirs first.
-    """
+    """How many predicates each value matches, run in SQLite."""
     counts = dict.fromkeys(values, 0)
     with closing(sqlite3.connect(":memory:")) as db:
         db.execute('CREATE TABLE t ("c" INTEGER)')
         db.executemany("INSERT INTO t VALUES (?)", [(v,) for v in values])
         for predicate in predicates:
-            sql = re.sub(r"'(-?\d+)'::bigint", r"\1", predicate)
-            for (value,) in db.execute(f"SELECT c FROM t WHERE {sql}"):  # noqa: S608 -- test SQL
+            for (value,) in db.execute(f"SELECT c FROM t WHERE {pg_mod(predicate)}"):  # noqa: S608 -- test SQL
                 counts[value] += 1
     return counts
 
 
+def test_the_methods_are_the_baselines_and_skewsplit_strategies() -> None:
+    assert METHODS == (
+        "default bounds",
+        "hash-mod",
+        "skewsplit statistics",
+        "skewsplit sample",
+    )
+    assert STRATEGIES == ("statistics", "sample")
+
+
+@pytest.mark.parametrize(
+    ("method", "strategy"),
+    [
+        ("default bounds", None),
+        ("hash-mod", None),
+        ("skewsplit statistics", "statistics"),
+        ("skewsplit sample", "sample"),
+    ],
+)
+def test_strategy_of(method: str, strategy: str | None) -> None:
+    assert strategy_of(method) == strategy
+
+
 def test_quote_doubles_quotes() -> None:
     assert quote('a"b') == '"a""b"'
-
-
-def test_literal_casts_and_escapes() -> None:
-    assert literal("2026-01-01 00:00:00", "timestamp") == "'2026-01-01 00:00:00'::timestamp"
-    assert literal("it's", "text") == "'it''s'::text"
 
 
 def test_bounds_query() -> None:
@@ -47,38 +74,35 @@ def test_bounds_query() -> None:
     )
 
 
-def test_quantile_query_asks_for_the_inner_quantiles() -> None:
-    assert quantile_query("c", 4) == (
-        'SELECT (percentile_disc(ARRAY[0.25, 0.5, 0.75]::float8[]) WITHIN GROUP (ORDER BY "c"))'
-        '::text[] AS bounds FROM "bench_orders"'
-    )
-
-
 def test_hash_mod_has_a_null_predicate_and_one_per_bucket() -> None:
     bucket = '((hashtextextended("c"::text, 0) % 3) + 3) % 3'
     assert hash_mod("c", 3) == ['"c" IS NULL', f"{bucket} = 0", f"{bucket} = 1", f"{bucket} = 2"]
 
 
-def test_quantile_ranges_text() -> None:
-    assert quantile_ranges("c", "bigint", ["10", "20"]) == [
-        '"c" IS NULL',
-        "\"c\" < '10'::bigint",
-        "\"c\" >= '10'::bigint AND \"c\" < '20'::bigint",
-        "\"c\" >= '20'::bigint",
-    ]
+def test_every_value_matches_exactly_one_hash_bucket() -> None:
+    # SQLite's % truncates toward zero, as PostgreSQL's does.
+    values: list[int | None] = [None, *range(-30, 30)]
+    assert set(matches(hash_mod("c", 4), values).values()) == {1}
 
 
-@pytest.mark.parametrize(
-    ("bounds", "ranges"),
-    [
-        ([], 1),
-        (["5"], 2),
-        (["1", "1", "1", "7"], 3),
-        (["-3", "0", "0", "4", "9", "9"], 5),
-    ],
-)
-def test_every_value_matches_exactly_one_range(bounds: list[str], ranges: int) -> None:
-    predicates = quantile_ranges("c", "bigint", bounds)
-    assert len(predicates) == ranges + 1
-    values: list[int | None] = [None, *range(-10, 15), -(2**63), 2**63 - 1]
-    assert set(matches(predicates, values).values()) == {1}
+def test_plan_path(tmp_path: Path) -> None:
+    assert plan_path(tmp_path, "created_at", "sample") == tmp_path / "created_at-sample.json"
+
+
+def test_read_plan_takes_the_predicates_and_skewsplits_planning_time(tmp_path: Path) -> None:
+    data = {
+        "column": "c",
+        "type": "int8",
+        "partitions": 2,
+        "null_rows": 1,
+        "mcv": [],
+        "histogram": {"bounds": ["1", "9"], "rows": 8},
+        "source": {"statistics": "pg_stats", "planning_ms": 1234.5},
+    }
+    result = plan(data)
+    path = tmp_path / "c-statistics.json"
+    path.write_text(result.to_json(), encoding="utf-8")
+    predicates, planning = read_plan(path)
+    assert predicates == result.predicates
+    assert planning == pytest.approx(1.2345)
+    assert json.loads(path.read_text(encoding="utf-8"))["predicates"][0]["sql"] == '"c" IS NULL'

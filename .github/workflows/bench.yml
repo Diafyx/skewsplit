@@ -1,9 +1,24 @@
 name: Bench
 
 # The Spark benchmark (bench/README.md). It is not part of ci-gate. It runs by
-# hand, and on pull requests that change the benchmark itself, so a change to
-# bench/ comes with its own results.
+# hand, on pull requests that change the benchmark itself, so a change to
+# bench/ comes with its own results, and each night from nightly.yml, which
+# compares skewsplit's max task time with bench/baseline.json.
 on:
+  workflow_call:
+    inputs:
+      rows:
+        description: Rows in the benchmark table
+        type: number
+        default: 15000000
+      partitions:
+        description: Partitions per read
+        type: number
+        default: 16
+      runs:
+        description: Runs of each method (the report shows medians)
+        type: number
+        default: 3
   workflow_dispatch:
     inputs:
       rows:
@@ -26,8 +41,11 @@ on:
 permissions:
   contents: read
 
+# Its own group: called from nightly.yml, github.workflow is "Nightly", and a
+# group shared with the ci.yml call there would hold one of them back. A new
+# push to a pull request cancels its older run; every other run is its own.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: bench-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 defaults:
@@ -83,5 +101,8 @@ jobs:
           name: bench-results
           path: |
             reports/bench.json
-            reports/RESULTS.md
+            reports/bench/
+            reports/bench-plans/
+            reports/spark-events/
+          if-no-files-found: ignore
           retention-days: 30

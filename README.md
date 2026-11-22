@@ -13,6 +13,29 @@ report of the skew that remains.
 > release. The roadmap is in the
 > [milestones](https://github.com/Diafyx/skewsplit/milestones).
 
+## Benchmark
+
+Reading a skewed table of 15,000,000 rows from PostgreSQL into Spark, in 16 partitions:
+
+| Column | Method | Largest task | Slowest task | Whole read |
+|--------|--------|-------------:|-------------:|-----------:|
+| `customer_id` | default bounds | 83% of the rows | 11.9 s | 11.9 s |
+| `customer_id` | hash-mod | 10% of the rows | 4.6 s | 15.3 s |
+| `customer_id` | skewsplit statistics | 7% of the rows | 2.9 s | 12.0 s |
+| `customer_id` | skewsplit sample | 7% of the rows | 3.0 s | 12.0 s |
+| `created_at` | default bounds | 62% of the rows | 7.8 s | 13.8 s |
+| `created_at` | hash-mod | 6% of the rows | 4.6 s | 18.7 s |
+| `created_at` | skewsplit statistics | 7% of the rows | 2.9 s | 11.2 s |
+| `created_at` | skewsplit sample | 6% of the rows | 2.7 s | 11.1 s |
+
+![Each task's duration, by method](bench/tasks.svg)
+
+Measured by [this run of the Bench workflow](https://github.com/Diafyx/skewsplit/actions/runs/45030759209); the setup and every number are in [bench/RESULTS.md](bench/RESULTS.md).
+
+The table, the methods, and how to reproduce the run are in
+[bench/README.md](bench/README.md). A nightly run compares skewsplit's slowest
+task with this one.
+
 ## The problem
 
 Spark's JDBC reader splits a table by `lowerBound`, `upperBound` and
@@ -337,22 +360,6 @@ lists the settings that matter.
 Support for a version is dropped only in a minor release, announced in the
 changelog one release ahead.
 <!-- supported-versions:end -->
-
-## Benchmark
-
-Before the adapter was built, a spike measured whether ranges of equal row
-counts beat the alternatives on an indexed, skewed column. It read a table of
-15 million rows into Spark 4.3 with 16 partitions, from PostgreSQL 18:
-
-| Column | Largest task, default bounds | Largest task, quantile ranges | Ranges against hash-mod: slowest task | Ranges against hash-mod: whole job |
-|--------|-----------------------------:|------------------------------:|--------------------------------------:|-----------------------------------:|
-| `customer_id` (Zipf-like) | 83% of the rows | 8% | 32% faster | 20% faster |
-| `created_at` (recent-heavy) | 62% of the rows | 6% | 37% faster | 43% faster |
-
-The spike computed exact quantiles with a query that scans the column, which
-took 2.7 and 4.7 seconds; skewsplit plans the same kind of ranges from
-`pg_stats` without a scan. The method and every number are in
-[bench/README.md](bench/README.md) and [bench/RESULTS.md](bench/RESULTS.md).
 
 ## Contributing
 

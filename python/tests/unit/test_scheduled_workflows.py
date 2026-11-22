@@ -14,20 +14,21 @@ _JOB = re.compile(r"^  ([a-z][a-z0-9-]*):\n", re.MULTILINE)
 
 
 class Scheduled(NamedTuple):
-    """A scheduled workflow, its jobs, and the job that opens its issue."""
+    """A scheduled workflow, its jobs, and the jobs that open its issues, with their labels."""
 
     file: str
     jobs: set[str]
-    issue_job: str
-    labels: list[str]
+    issue_jobs: dict[str, list[str]]
 
 
 SCHEDULED = [
     Scheduled(
         "nightly.yml",
-        {"ci", "hypothesis", "fuzz", "mutation", "mutation-issue", "links"},
-        "mutation-issue",
-        ["type/test", "area/core", "status/triage"],
+        {"ci", "hypothesis", "fuzz", "mutation", "mutation-issue", "bench", "bench-issue", "links"},
+        {
+            "mutation-issue": ["type/test", "area/core", "status/triage"],
+            "bench-issue": ["type/perf", "area/bench", "status/triage"],
+        },
     ),
     Scheduled(
         "canary.yml",
@@ -39,8 +40,7 @@ SCHEDULED = [
             "pgjdbc-next",
             "canary-issue",
         },
-        "canary-issue",
-        ["type/ci", "area/ci", "status/triage"],
+        {"canary-issue": ["type/ci", "area/ci", "status/triage"]},
     ),
 ]
 
@@ -86,24 +86,27 @@ def test_only_the_job_that_opens_issues_can_write_them(workflow: Scheduled) -> N
     for job, text in jobs(read(workflow)).items():
         opens = "scripts/tracking_issue.py" in text
         assert ("      issues: write" in text) == opens, job
-        assert opens == (job == workflow.issue_job), job
+        assert opens == (job in workflow.issue_jobs), job
 
 
 @parametrize
 def test_the_dry_run_input_reaches_the_issue_job(workflow: Scheduled) -> None:
-    issue = jobs(read(workflow))[workflow.issue_job]
-    assert re.search(r"    if: \$\{\{ !cancelled\(\) && \(.* \|\| inputs\.dry-run\) \}\}\n", issue)
-    assert "DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}" in issue
-    assert 'if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi' in issue
+    for name in workflow.issue_jobs:
+        issue = jobs(read(workflow))[name]
+        # On the job, or on the step that opens the issue.
+        assert re.search(r"    if: \$\{\{ [^\n]* \|\| inputs\.dry-run\)? \}\}\n", issue), name
+        assert "DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}" in issue, name
+        assert 'if [[ "$DRY_RUN" == true ]]; then args+=(--dry-run); fi' in issue, name
 
 
 @parametrize
 def test_the_issue_labels_exist(workflow: Scheduled) -> None:
     text = (ROOT / ".github" / "labels.yml").read_text(encoding="utf-8")
     labels = set(re.findall(r'^- name: "([^"]+)"$', text, re.MULTILINE))
-    used = re.findall(r"--label (\S+)", jobs(read(workflow))[workflow.issue_job])
-    assert used == workflow.labels
-    assert set(used) <= labels
+    for name, expected in workflow.issue_jobs.items():
+        used = re.findall(r"--label (\S+)", jobs(read(workflow))[name])
+        assert used == expected, name
+        assert set(used) <= labels, name
 
 
 def test_the_canary_issue_waits_for_every_job() -> None:

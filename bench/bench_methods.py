@@ -1,24 +1,31 @@
 """The ways the benchmark splits a JDBC read, as SQL text for Spark.
 
-Standard library only, so the unit tests run without Spark.
+Standard library only, so the unit tests run without Spark. skewsplit's own
+predicates come from bench/plan.py, which plans them with the package before
+Spark starts.
 """
 
 from __future__ import annotations
 
+import json
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 TABLE = "bench_orders"
 # The split columns and their PostgreSQL types.
 COLUMNS = {"customer_id": "bigint", "created_at": "timestamp"}
-METHODS = ("default bounds", "hash-mod", "quantile ranges")
+# skewsplit's strategies, each with its predicates planned by bench/plan.py.
+STRATEGIES: tuple[Literal["statistics", "sample"], ...] = ("statistics", "sample")
+# The REPEATABLE seed of the sample, so every run plans from the same rows.
+SAMPLE_SEED = 1
+METHODS = ("default bounds", "hash-mod", *(f"skewsplit {s}" for s in STRATEGIES))
 
 
 def quote(name: str) -> str:
     """Quote a PostgreSQL identifier."""
     return '"' + name.replace('"', '""') + '"'
-
-
-def literal(text: str, pg_type: str) -> str:
-    """A constant of the column's type, so the comparison can use its index."""
-    return "'" + text.replace("'", "''") + "'::" + pg_type
 
 
 def bounds_query(column: str) -> str:
@@ -27,32 +34,33 @@ def bounds_query(column: str) -> str:
     return f"SELECT min({col})::text AS lo, max({col})::text AS hi FROM {table}"  # noqa: S608 -- fixed, quoted identifiers
 
 
-def quantile_query(column: str, partitions: int) -> str:
-    """The ``partitions - 1`` inner quantiles of the column, as text, in order."""
-    fractions = ", ".join(repr(i / partitions) for i in range(1, partitions))
-    col = quote(column)
-    return (
-        f"SELECT (percentile_disc(ARRAY[{fractions}]::float8[]) WITHIN GROUP"  # noqa: S608 -- fixed, quoted identifiers
-        f" (ORDER BY {col}))::text[] AS bounds FROM {quote(TABLE)}"
-    )
-
-
 def hash_mod(column: str, partitions: int) -> list[str]:
-    """A NULL predicate, then one predicate per hash bucket. Each scans the whole table."""
+    """A NULL predicate, then one predicate per hash bucket, as a user would write them by hand.
+
+    Each scans the whole table.
+    """
     col = quote(column)
     bucket = f"((hashtextextended({col}::text, 0) % {partitions}) + {partitions}) % {partitions}"
     return [f"{col} IS NULL", *(f"{bucket} = {i}" for i in range(partitions))]
 
 
-def quantile_ranges(column: str, pg_type: str, bounds: list[str]) -> list[str]:
-    """A NULL predicate, then half-open ranges between the distinct quantiles.
+def strategy_of(method: str) -> str | None:
+    """The skewsplit strategy a method uses, or ``None`` for the other methods."""
+    prefix = "skewsplit "
+    return method[len(prefix) :] if method.startswith(prefix) else None
 
-    Equal neighbouring quantiles (a value that fills more than one partition)
-    collapse into one boundary, so there can be fewer ranges than partitions.
+
+def plan_path(directory: Path, column: str, strategy: str) -> Path:
+    """Where bench/plan.py writes the plan of one column and strategy."""
+    return directory / f"{column}-{strategy}.json"
+
+
+def read_plan(path: Path) -> tuple[list[str], float]:
+    """The predicates of a plan that ``skewsplit plan --format json`` wrote, and its planning time.
+
+    The planning time is the seconds skewsplit spent finding the column,
+    reading the statistics or the sample, and planning.
     """
-    col = quote(column)
-    cuts = [literal(b, pg_type) for i, b in enumerate(bounds) if i == 0 or b != bounds[i - 1]]
-    if not cuts:
-        return [f"{col} IS NULL", f"{col} IS NOT NULL"]
-    inner = [f"{col} >= {lo} AND {col} < {hi}" for lo, hi in zip(cuts, cuts[1:])]
-    return [f"{col} IS NULL", f"{col} < {cuts[0]}", *inner, f"{col} >= {cuts[-1]}"]
+    plan = json.loads(path.read_text(encoding="utf-8"))
+    predicates = [predicate["sql"] for predicate in plan["predicates"]]
+    return predicates, plan["source"]["planning_ms"] / 1000

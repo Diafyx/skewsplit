@@ -80,6 +80,6 @@ skewsplit's plans and Spark's event log. To update the published results:
 ## Nightly
 
 `nightly.yml` runs the benchmark every night and compares skewsplit's median
-max task time with `bench/baseline.json`, written from the headline's run. When
+max task time with [`baseline.json`](baseline.json), written from the headline's run. When
 it moves by more than 10% either way, `bench_compare.py` writes the issue, and
 `scripts/tracking_issue.py` opens it or comments on the one already open.

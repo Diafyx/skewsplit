@@ -253,16 +253,25 @@ def read_statistics(
     )
 
 
-def _distribution(
-    conn: psycopg.Connection[Any], table: str, column: str, statement_timeout_ms: int | None
-) -> JSON:
-    found = find_column(conn, table, column)
-    statistics = read_statistics(conn, found, statement_timeout_ms=statement_timeout_ms)
+def distribution_from(statistics: Statistics) -> JSON:
+    """Convert statistics that :func:`read_statistics` read into a distribution.
+
+    Raises:
+        SpecError: If the statistics do not convert into a valid input.
+    """
     # The conversion does not depend on the partitions; any valid number will do.
     data = from_pg_stats(statistics.conversion_input(1))
     del data["partitions"]
     data["source"] = {**cast("JSON", data["source"]), **statistics.report()}
     return data
+
+
+def _distribution(
+    conn: psycopg.Connection[Any], table: str, column: str, statement_timeout_ms: int | None
+) -> JSON:
+    found = find_column(conn, table, column)
+    statistics = read_statistics(conn, found, statement_timeout_ms=statement_timeout_ms)
+    return distribution_from(statistics)
 
 
 def _no_statistics(column: Column, *, inherited: bool) -> str:

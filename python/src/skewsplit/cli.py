@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 # skewsplit.postgres.STRATEGIES and the default sample size, without importing
 # psycopg, which the postgres extra installs.
-STRATEGIES = ("statistics", "sample", "exact")
+STRATEGIES = ("statistics", "sample", "exact", "auto")
 METHODS = ("range", "hash")
 SAMPLE_ROWS = 30000
 
@@ -170,25 +170,28 @@ def _planning_options(sub: argparse.ArgumentParser, *, timeout: bool = True) -> 
         help="statistics: read pg_stats, never the table (the default);"
         " sample: read a sample of the table with TABLESAMPLE,"
         " for when the statistics are missing or out of date;"
-        " exact: read every row, which scans the whole table three times and sorts the column",
+        " exact: read every row, which scans the whole table three times and sorts the column;"
+        " auto: the statistics when they are fresh, otherwise a sample, and hash predicates"
+        " for a column that ranges cannot split, and say why",
     )
     sub.add_argument(
         "--sample-rows",
         type=_positive,
         metavar="N",
-        help=f"for --strategy sample: about how many rows to sample (default {SAMPLE_ROWS})",
+        help="for --strategy sample or auto: about how many rows to sample"
+        f" (default {SAMPLE_ROWS})",
     )
     sub.add_argument(
         "--max-sample-rows",
         type=_positive,
         metavar="N",
-        help="for --strategy sample: the most rows the sample reads"
+        help="for --strategy sample or auto: the most rows the sample reads"
         " (default 10 times --sample-rows)",
     )
     sub.add_argument(
         "--seed",
         type=int,
-        help="for --strategy sample: the same seed gives the same sample of the same table",
+        help="for --strategy sample or auto: the same seed gives the same sample of the same table",
     )
     if timeout:
         sub.add_argument(
@@ -214,8 +217,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("--method, --strategy and its options are for planning, not for --plan")
     if method == "hash" and (args.strategy is not None or sampling):
         parser.error("--strategy and its options are for --method range")
-    if sampling and args.strategy != "sample":
-        parser.error("--sample-rows, --max-sample-rows and --seed need --strategy sample")
+    if sampling and args.strategy not in {"sample", "auto"}:
+        parser.error("--sample-rows, --max-sample-rows and --seed need --strategy sample or auto")
     smallest = SAMPLE_ROWS if args.sample_rows is None else args.sample_rows
     if args.max_sample_rows is not None and args.max_sample_rows < smallest:
         parser.error(f"--max-sample-rows must be at least the sample size, {smallest}")
@@ -283,12 +286,13 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
 def _options(args: argparse.Namespace) -> dict[str, Any]:
     """The keyword arguments of postgres.plan and postgres.distribution that were given."""
     options: dict[str, Any] = {}
-    if getattr(args, "method", None) == "hash":
-        options["method"] = "hash"
-    if args.strategy == "exact":
-        options["strategy"] = "exact"
-    if args.strategy == "sample":
-        options["strategy"] = "sample"
+    method = getattr(args, "method", None)
+    if method is not None:
+        options["method"] = method
+    # The statistics are the default, so they need no option.
+    if args.strategy in {"sample", "exact", "auto"}:
+        options["strategy"] = args.strategy
+    if args.strategy in {"sample", "auto"}:
         given = {"sample_rows": args.sample_rows, "max_sample_rows": args.max_sample_rows}
         options.update({key: value for key, value in given.items() if value is not None})
         if args.seed is not None:

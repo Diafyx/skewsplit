@@ -141,7 +141,7 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
-| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. With `method="hash"`, hash predicates for a column of any type instead of ranges. `statement_timeout_ms` bounds each query of any strategy |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. With `strategy="auto"`, from the statistics when they are fresh and a sample otherwise, or hash predicates for a column ranges cannot split; `source["auto"]` says which and why. With `method="hash"`, hash predicates for a column of any type instead of ranges. `statement_timeout_ms` bounds each query of any strategy |
 | `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads, as `skewsplit.plan` takes it. It takes the same options |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
@@ -162,7 +162,7 @@ skewsplit verify --table T (--plan FILE | --column C --partitions N [--method ra
 skewsplit stats  --table T --column C [--partitions N]
 
 planning options of plan, stats, and verify without --plan:
-  [--strategy statistics|sample|exact] [--sample-rows N] [--max-sample-rows N] [--seed N]
+  [--strategy statistics|sample|exact|auto] [--sample-rows N] [--max-sample-rows N] [--seed N]
   [--statement-timeout-ms MS]
 ```
 
@@ -204,6 +204,20 @@ when accuracy matters more than planning time:
 - **it scans the whole table three times and sorts the column**, so on a large
   table it takes far longer than the other strategies. Set
   `--statement-timeout-ms` to bound each query.
+
+`--strategy auto` chooses the cheapest strategy that gives a plan to trust, as
+spec section 17 describes, and the report's second line says which and why:
+
+| When | Strategy |
+|------|----------|
+| The column's type is not one ranges split, and `--method range` was not given | hash predicates |
+| The table was never analyzed, or `pg_stats` has nothing on the column | sample |
+| More than a tenth of the rows changed since `ANALYZE` | sample |
+| PostgreSQL does not count the changes, as for a partitioned table | sample |
+| Otherwise | statistics |
+
+It never chooses `exact`. `--sample-rows`, `--max-sample-rows` and `--seed`
+apply when it reads a sample.
 
 For a column with the statistics of the quick start, `plan` prints:
 

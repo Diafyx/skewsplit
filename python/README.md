@@ -41,6 +41,10 @@ plan = postgres.plan(dsn, "public.orders", "customer_id", 16, strategy="sample",
 For a column of another type, such as `text` or `uuid`, `method="hash"` plans
 hash predicates; every partition then reads the whole table.
 
+`strategy="auto"` chooses for you: the statistics when they are fresh, a
+sample when they are missing or out of date, and hash predicates for a column
+that ranges cannot split. `plan.source["auto"]` and the report say which and why.
+
 When accuracy matters more than planning time, `strategy="exact"` reads every
 row. It scans the whole table three times and sorts the column, so set
 `statement_timeout_ms` on a large table.

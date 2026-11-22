@@ -109,6 +109,8 @@ class Column:
             ``find_column(..., any_type=True)`` the database's name for another type.
         scale: The scale for ``numeric``, otherwise ``None``.
         relid: The table's OID.
+        splittable: Whether ranges can split the column's type (spec section
+            2). Only ``find_column(..., any_type=True)`` finds one that cannot.
     """
 
     schema: str
@@ -118,6 +120,7 @@ class Column:
     type_name: str
     scale: int | None
     relid: int
+    splittable: bool = True
 
 
 @dataclass(frozen=True)
@@ -171,6 +174,7 @@ def find_column(
     if type_oid is None:
         _fail("column_not_found", f"{qualified} has no column {column!r}")
     spec_type = column_type(type_oid, typmod)
+    splittable = spec_type is not None
     if spec_type is None and any_type:
         spec_type = (sql_type, None)
     if spec_type is None:
@@ -199,6 +203,7 @@ def find_column(
         type_name=type_name,
         scale=scale,
         relid=relid,
+        splittable=splittable,
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -177,6 +178,23 @@ def test_the_hash_method(
     assert (code, report["ok"]) == (cli.OK, True)
     assert report["predicates"][0]["actual_rows"] == 100
     assert sum(entry["actual_rows"] for entry in report["predicates"]) == 1000
+
+
+def test_the_auto_strategy(
+    capsys: pytest.CaptureFixture[str], database: Database, table: str
+) -> None:
+    code, out, err = run(capsys, database, "plan", "--table", table, *PLAN_4, "--strategy", "auto")
+    assert (code, err) == (cli.OK, "")
+    # The table was analyzed; whether its insert was counted before ANALYZE
+    # decides between the statistics and a sample, and the line says which.
+    assert re.fullmatch(r"strategy (statistics|sample), chosen by auto: .+", out.split("\n")[1])
+    argv = ("stats", "--table", table, "--column", "v", "--strategy", "auto", "--seed", "1")
+    code, out, _ = run(capsys, database, *argv)
+    assert code == cli.OK
+    assert json.loads(out)["source"]["auto"]["strategy"] in {"statistics", "sample"}
+    argv = ("verify", "--table", table, *PLAN_4, "--strategy", "auto")
+    code, out, _ = run(capsys, database, *argv)
+    assert code == cli.OK
 
 
 def test_a_missing_table(capsys: pytest.CaptureFixture[str], database: Database) -> None:

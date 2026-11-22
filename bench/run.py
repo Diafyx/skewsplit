@@ -133,18 +133,23 @@ def measure(  # noqa: PLR0913 -- one argument per input of the read
     skewsplit's plans were made before Spark started, so their planning time
     is the one skewsplit measured; the other methods' is the query here.
     """
-    # A job group lasts until the next one is set. Without this, the bounds
-    # query of the next read would run in this read's group, after its tasks
-    # were counted, and the event log would have one task more.
-    spark.sparkContext.setJobGroup(SETUP_GROUP, "planning queries, outside every measured read")
+    # A job group lasts until the next one is set, so every query outside a
+    # measured write runs in SETUP_GROUP: otherwise the next read's bounds
+    # query, or main's last query, would run in this read's group after its
+    # tasks were counted, and the event log would have one task more.
+    context = spark.sparkContext
+    context.setJobGroup(SETUP_GROUP, "queries outside every measured read")
     start = time.perf_counter()
     df, planned = frame(
         spark, jdbc, plans=plans, method=method, column=column, partitions=partitions
     )
     ready = time.perf_counter()
     group = f"{column}/{method}/{time.monotonic_ns()}"
-    spark.sparkContext.setJobGroup(group, group)
-    df.write.format("noop").mode("overwrite").save()
+    context.setJobGroup(group, group)
+    try:
+        df.write.format("noop").mode("overwrite").save()
+    finally:
+        context.setJobGroup(SETUP_GROUP, "queries outside every measured read")
     seconds = time.perf_counter() - ready
     return {
         "group": group,

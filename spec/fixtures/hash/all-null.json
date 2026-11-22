@@ -1,0 +1,52 @@
+{
+  "description": "Every row is NULL. The hash predicates have 0 rows each, and 100 * 2 > 100 gives nulls_exceed_share. k = (2 * 100 * 2 * 1000 + 100) / 200 = 2000, so the skew score is 2.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 2,
+    "null_rows": 100,
+    "non_null_rows": 0
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 2,
+    "planned_partitions": 2,
+    "rows": {
+      "total": 100,
+      "null": 100,
+      "non_null": 0
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 100
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 2) + 2) % 2 = 0",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 2) + 2) % 2 = 1",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": 2.0,
+    "warnings": [
+      {
+        "code": "full_scans"
+      },
+      {
+        "code": "nulls_exceed_share",
+        "rows": 100
+      }
+    ],
+    "source": null
+  }
+}

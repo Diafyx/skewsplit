@@ -11,6 +11,8 @@
 | `fixtures/pg-stats/*.json` | Cases for converting PostgreSQL statistics into the input (spec section 13) |
 | [`schema/sample.schema.json`](schema/sample.schema.json) | JSON Schema of one sample fixture |
 | `fixtures/sample/*.json` | Cases for converting a sample of a column into the input (spec section 14) |
+| [`schema/hash.schema.json`](schema/hash.schema.json) | JSON Schema of one hash fixture |
+| `fixtures/hash/*.json` | Cases for planning hash predicates from row counts (spec section 16) |
 
 ## Fixture format
 
@@ -60,6 +62,12 @@ Spec section 15, exact quantiles, has no fixtures. It defines the queries
 an adapter runs, and their results are already the planner input. Each
 implementation's PostgreSQL integration tests check it.
 
+### Hash fixtures
+
+The files in `fixtures/hash/` check spec section 16. Each `input` is the
+column's name and type and its NULL and non-NULL rows, and `expected` is the
+hash plan or an `error` code.
+
 ## Checks
 
 `make check-fixtures` validates every fixture against the schema, then runs
@@ -68,7 +76,8 @@ counts add up and match the input, the predicates fit together in order,
 each warning is given exactly when the spec says, and the skew score follows
 from the largest predicate. For the array text fixtures it checks only the
 names and the spec version; for the statistics and sample fixtures, also the
-warnings in each result's `source`. It does not plan, so a wrong split point is
+warnings in each result's `source`. A hash plan follows from its row counts
+alone, so it checks those in full. It does not plan ranges, so a wrong split point is
 caught by review of the description and by the implementations' tests: for
 Python, `make conformance` runs every fixture against the core.
 

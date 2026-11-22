@@ -356,10 +356,11 @@ def test_the_exact_strategy_passes_the_timeout(calls: list[tuple[object, ...]]) 
 def test_sample_options_do_not_fit_the_exact_strategy(
     calls: list[tuple[object, ...]], option: str
 ) -> None:
+    options: dict[str, Any] = {option: 5}
     with pytest.raises(ValueError, match="are for strategy='sample'"):
-        planning.plan("dsn", "t", "c", 4, strategy="exact", **{option: 5})
+        planning.plan("dsn", "t", "c", 4, strategy="exact", **options)
     with pytest.raises(ValueError, match="are for strategy='sample'"):
-        planning.distribution("dsn", "t", "c", strategy="exact", **{option: 5})
+        planning.distribution("dsn", "t", "c", strategy="exact", **options)
     assert calls == []
 
 

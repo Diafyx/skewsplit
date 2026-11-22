@@ -1,0 +1,16 @@
+{
+  "description": "total_rows is 1 + 9223372036854775807 = 2^63, above 2^63 - 1.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 1,
+    "non_null_rows": 9223372036854775807
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_rows"
+    }
+  }
+}

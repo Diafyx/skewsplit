@@ -1,0 +1,57 @@
+{
+  "description": "source is copied to the plan unchanged, as in spec section 10.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 2,
+    "null_rows": 10,
+    "non_null_rows": 1000,
+    "source": {
+      "statistics": "count",
+      "table": "public.sessions",
+      "rows": 1010
+    }
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 2,
+    "planned_partitions": 2,
+    "rows": {
+      "total": 1010,
+      "null": 10,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 10
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 2) + 2) % 2 = 0",
+        "estimated_rows": 500
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 2) + 2) % 2 = 1",
+        "estimated_rows": 500
+      }
+    ],
+    "skew_score": 0.99,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": {
+      "statistics": "count",
+      "table": "public.sessions",
+      "rows": 1010
+    }
+  }
+}

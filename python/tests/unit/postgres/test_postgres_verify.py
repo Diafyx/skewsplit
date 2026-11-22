@@ -86,6 +86,19 @@ def run(
     return fake, found
 
 
+def test_a_column_of_any_type_is_verified() -> None:
+    # Hash predicates (spec section 16) split columns the planner cannot range-split.
+    uuid_row = (16384, "r", "sales", "Orders", QUALIFIED, False, 2950, -1, "uuid", True)
+    hashed = '((pg_catalog.hashtextextended("id"::text, 0) % 2) + 2) % 2 = 0'
+    fake = FakeConnection(uuid_row, None, (10, 0, 0))
+    conn = cast("psycopg.Connection[Any]", fake)
+    found = verify(conn, QUALIFIED, "id", ['"id" IS NULL', hashed])
+    assert found == Verification(QUALIFIED, 10, 0, 0, None)
+    # Without parameters, psycopg sends the % of the predicate as it is.
+    assert hashed in fake.queries[-1][0]
+    assert fake.queries[-1][1] is None
+
+
 def test_one_scan_checks_every_row() -> None:
     fake, found = run(None, (100, 0, 0))
     assert found == Verification(QUALIFIED, 100, 0, 0, None)

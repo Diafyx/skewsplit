@@ -1,0 +1,16 @@
+{
+  "description": "partitions must be at least 1.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 0,
+    "null_rows": 10,
+    "non_null_rows": 1000
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_partitions"
+    }
+  }
+}

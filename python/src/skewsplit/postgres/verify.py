@@ -106,7 +106,8 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     """
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
-        qualified = find_column(conn, table, column).qualified
+        # Predicates of any kind, hash predicates too, work on a column of any type.
+        qualified = find_column(conn, table, column, any_type=True).qualified
         # find_column quoted the name with quote_ident.
         target = sql.SQL(qualified)
         # Each predicate on lines of its own, so a trailing -- comment ends with it.

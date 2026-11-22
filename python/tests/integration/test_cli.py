@@ -154,6 +154,31 @@ def test_the_exact_strategy(
     assert out.startswith(f"OK: each of the 1000 rows of {table} matches exactly one predicate\n")
 
 
+def test_the_hash_method(
+    capsys: pytest.CaptureFixture[str], database: Database, table: str, tmp_path: Path
+) -> None:
+    hashed = ("--method", "hash")
+    code, out, err = run(capsys, database, "plan", "--table", table, *PLAN_4, *hashed)
+    assert (code, err) == (cli.OK, "")
+    assert out.startswith("v (int4): 1000 estimated rows, 4 of 4 partitions plus one for NULL")
+    assert "warning full_scans: " in out
+    argv = ("plan", "--table", table, *PLAN_4, *hashed, "--format", "json")
+    code, out, _ = run(capsys, database, *argv)
+    data = json.loads(out)
+    assert [p["kind"] for p in data["predicates"]] == ["null", "hash", "hash", "hash", "hash"]
+    path = tmp_path / "hash.json"
+    path.write_text(out, encoding="utf-8")
+    code, out, _ = run(capsys, database, "verify", "--table", table, "--plan", str(path))
+    assert code == cli.OK
+    assert out == f"OK: each of the 1000 rows of {table} matches exactly one predicate\n"
+    counted = ("verify", "--table", table, *PLAN_4, *hashed, "--counts", "--format", "json")
+    code, out, _ = run(capsys, database, *counted)
+    report: Any = json.loads(out)
+    assert (code, report["ok"]) == (cli.OK, True)
+    assert report["predicates"][0]["actual_rows"] == 100
+    assert sum(entry["actual_rows"] for entry in report["predicates"]) == 1000
+
+
 def test_a_missing_table(capsys: pytest.CaptureFixture[str], database: Database) -> None:
     argv = ("plan", "--table", f"{database.schema}.no_such_table", *PLAN_4)
     code, out, err = run(capsys, database, *argv)

@@ -1,0 +1,60 @@
+{
+  "description": "R = 10 does not divide by N = 4. The remainders get 2 - 0 = 2, 5 - 2 = 3, 7 - 5 = 2 and 10 - 7 = 3 rows, which add up to 10. k = (2 * 3 * 4 * 1000 + 10) / 20 = 1200, so the skew score is 1.2.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 0,
+    "non_null_rows": 10
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 10,
+      "null": 0,
+      "non_null": 10
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 0",
+        "estimated_rows": 2
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 1",
+        "estimated_rows": 3
+      },
+      {
+        "kind": "hash",
+        "remainder": 2,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 2",
+        "estimated_rows": 2
+      },
+      {
+        "kind": "hash",
+        "remainder": 3,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 3",
+        "estimated_rows": 3
+      }
+    ],
+    "skew_score": 1.2,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": null
+  }
+}

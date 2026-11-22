@@ -33,7 +33,8 @@ skewsplit writes those clauses. It:
   counts so that only one row per value reaches skewsplit, or, when accuracy
   matters more than planning time, exact quantiles of every row;
 - plans ranges of roughly equal *row counts* that the database can answer from
-  an index on the column;
+  an index on the column, or, for a column of a type without a usable order,
+  hash predicates, which read the whole table for every partition;
 - gives `NULL` rows their own `col IS NULL` predicate, and gives a value that
   is too frequent to split its own `col = value` predicate, with a warning;
 - reports the estimated skew of the plan, where the estimate came from and how
@@ -136,10 +137,11 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | Name | What it is |
 |------|------------|
 | `skewsplit.plan(distribution, partitions)` | Plans from a distribution you already have: the input of spec section 1, without `partitions` |
+| `skewsplit.hash_plan(counts, partitions)` | Plans hash predicates from a column's name, type and NULL and non-NULL rows: the input of spec section 16, without `partitions` |
 | `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
-| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. `statement_timeout_ms` bounds each query of any strategy |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. With `method="hash"`, hash predicates for a column of any type instead of ranges. `statement_timeout_ms` bounds each query of any strategy |
 | `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads, as `skewsplit.plan` takes it. It takes the same options |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
@@ -153,8 +155,9 @@ which is left open and as it was.
 ## Command line
 
 ```text
-skewsplit plan   --table T --column C --partitions N [--format text|json|pyspark|scala]
-skewsplit verify --table T (--plan FILE | --column C --partitions N)
+skewsplit plan   --table T --column C --partitions N [--method range|hash]
+                 [--format text|json|pyspark|scala]
+skewsplit verify --table T (--plan FILE | --column C --partitions N [--method range|hash])
                  [--counts] [--statement-timeout-ms MS] [--format text|json]
 skewsplit stats  --table T --column C [--partitions N]
 
@@ -233,19 +236,38 @@ and never quote a `--dsn` that is not valid.
 ## When to use hash-mod instead
 
 The usual alternative splits on a hash of the column, one predicate per
-remainder, such as `((hashtextextended(col::text, 0) % N) + N) % N = i`. It
-needs no statistics and works on any type, but an ordinary index cannot
-answer it, so every partition reads the whole table. Prefer it when:
+remainder. `--method hash` (`method="hash"` in Python) plans it, as spec
+section 16 describes:
 
-- the column's type is not one skewsplit supports (see below), such as `text`
-  or `uuid`;
+```text
+"session_id" IS NULL
+((pg_catalog.hashtextextended("session_id"::text, 0) % 16) + 16) % 16 = 0
+...
+((pg_catalog.hashtextextended("session_id"::text, 0) % 16) + 16) % 16 = 15
+```
+
+It works on a column of any type and needs no statistics: planning counts the
+rows with one query. But **no index can serve a hash predicate, so every
+partition reads the whole table**, and the plan always warns `full_scans`.
+Prefer it when:
+
+- the column's type is not one ranges support (see below), such as `text`,
+  `uuid` or `boolean`;
 - the table has no statistics you can trust, you cannot run `ANALYZE`, and a
   sample (`--strategy sample`) would cost too much;
 - the table is small enough that reading it once per partition costs nothing.
 
-Neither method can split a value that holds more rows than a partition should:
-every row of that value hashes to the same partition, too. Split on another
-column, such as the primary key, instead.
+The estimates assume every value has the same number of rows. Neither method
+can split a value that holds more rows than a partition should: every row of
+that value hashes to the same partition, too. Split on another column, such
+as the primary key, instead. `verify --counts` shows the real sizes.
+
+The hash is of the value's text, so every partition's query must produce the
+same text for the same value. For most types it always does, but the text of
+`timestamptz` depends on the session's `TimeZone`, which the PostgreSQL JDBC
+driver takes from each executor's JVM. For such a column, fix the time zone
+in the JDBC URL, for example `?options=-c%20TimeZone=UTC`. Spec section 16
+lists the settings that matter.
 
 ## Limitations
 
@@ -274,9 +296,10 @@ column, such as the primary key, instead.
   `dominant_value_not_isolated`.
 - **NULL rows** always get their own predicate. When they hold more than one
   partition's share, the plan warns `nulls_exceed_share`.
-- **Types.** `smallint`, `integer`, `bigint`, `numeric` with a declared scale,
-  `date`, `timestamp` and `timestamptz`. Any other type, and `numeric` without
-  a scale, is the error `unsupported_type`.
+- **Types.** Ranges split `smallint`, `integer`, `bigint`, `numeric` with a
+  declared scale, `date`, `timestamp` and `timestamptz`. Any other type, and
+  `numeric` without a scale, is the error `unsupported_type`, unless you plan
+  hash predicates with `--method hash`, which work on any type.
 - **Tables.** Tables, partitioned tables, materialized views and foreign
   tables, in PostgreSQL only. The role needs `SELECT` on the column, and no
   row-level security may apply to it: otherwise `pg_stats` hides the

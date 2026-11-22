@@ -15,9 +15,10 @@ import pytest
 
 from skewsplit.core.codecs import codec_for
 from skewsplit.core.errors import SpecError
+from skewsplit.core.hashing import hash_plan
 from skewsplit.core.pgarray import parse_values
 from skewsplit.core.pgstats import from_pg_stats
-from skewsplit.core.plan import SPEC_VERSION, error_dict
+from skewsplit.core.plan import SPEC_VERSION, Plan, error_dict
 from skewsplit.core.planner import plan
 from skewsplit.core.sample import from_sample
 
@@ -30,12 +31,13 @@ FIXTURES = sorted((SPEC / "fixtures").glob("*.json"))
 PG_ARRAY = sorted((SPEC / "fixtures" / "pg-array").glob("*.json"))
 PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))
 SAMPLE = sorted((SPEC / "fixtures" / "sample").glob("*.json"))
+HASH = sorted((SPEC / "fixtures" / "hash").glob("*.json"))
 
 
-def run(data: object) -> dict[str, Any]:
+def run(data: object, planner: Callable[[object], Plan] = plan) -> dict[str, Any]:
     """Return the output for an input as a JSON round trip: a plan or an error."""
     try:
-        out = plan(data).to_dict()
+        out = planner(data).to_dict()
     except SpecError as error:
         out = error_dict(error)
     decoded: dict[str, Any] = json.loads(json.dumps(out, allow_nan=False))
@@ -156,3 +158,25 @@ def test_sample_fixture(path: Path) -> None:
     assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)
     if "input" in expected:
         assert run(expected["input"])["source"] == expected["input"]["source"]
+
+
+def test_there_are_hash_fixtures_for_every_error_code() -> None:
+    schema = json.loads((SPEC / "schema" / "hash.schema.json").read_text(encoding="utf-8"))
+    codes = {
+        json.loads(path.read_text(encoding="utf-8"))["expected"]["error"]["code"]
+        for path in HASH
+        if path.name.startswith("error-")
+    }
+    assert codes == set(
+        schema["$defs"]["error"]["properties"]["error"]["properties"]["code"]["enum"]
+    )
+    assert len(HASH) >= 20
+
+
+@pytest.mark.parametrize("path", HASH, ids=[path.stem for path in HASH])
+def test_hash_fixture(path: Path) -> None:
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    actual = without_messages(run(fixture["input"], hash_plan))
+    expected = fixture["expected"]
+    assert actual == expected, fixture["description"]
+    assert json.dumps(actual, sort_keys=True) == json.dumps(expected, sort_keys=True)

@@ -1,0 +1,48 @@
+{
+  "description": "The column a\"b is written \"a\"\"b\", as in spec section 5, and the type is copied as the database names it, with its spaces and type modifier.",
+  "input": {
+    "column": "a\"b",
+    "type": "character varying(20)",
+    "partitions": 2,
+    "null_rows": 0,
+    "non_null_rows": 4
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "a\"b",
+    "type": "character varying(20)",
+    "requested_partitions": 2,
+    "planned_partitions": 2,
+    "rows": {
+      "total": 4,
+      "null": 0,
+      "non_null": 4
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"a\"\"b\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"a\"\"b\"::text, 0) % 2) + 2) % 2 = 0",
+        "estimated_rows": 2
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"a\"\"b\"::text, 0) % 2) + 2) % 2 = 1",
+        "estimated_rows": 2
+      }
+    ],
+    "skew_score": 1.0,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": null
+  }
+}

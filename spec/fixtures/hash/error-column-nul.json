@@ -1,0 +1,16 @@
+{
+  "description": "A column name with U+0000 is invalid_column.",
+  "input": {
+    "column": "a\u0000b",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 10,
+    "non_null_rows": 1000
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_column"
+    }
+  }
+}

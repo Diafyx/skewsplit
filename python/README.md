@@ -38,6 +38,9 @@ out of date, plan from a sample of the table instead:
 plan = postgres.plan(dsn, "public.orders", "customer_id", 16, strategy="sample", seed=7)
 ```
 
+For a column of another type, such as `text` or `uuid`, `method="hash"` plans
+hash predicates; every partition then reads the whole table.
+
 When accuracy matters more than planning time, `strategy="exact"` reads every
 row. It scans the whole table three times and sorts the column, so set
 `statement_timeout_ms` on a large table.

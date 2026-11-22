@@ -88,6 +88,26 @@ def test_unsupported_types(
     assert f"is {expected}; skewsplit splits smallint," in caught.value.message
 
 
+@pytest.mark.parametrize(
+    ("column", "sql_type"),
+    [
+        ("c_numeric_unconstrained", "numeric"),
+        ("c_text", "text"),
+        ("c_uuid", "uuid"),
+        ("c_float", "double precision"),
+        ("c_boolean", "boolean"),
+        ("c_time", "time without time zone"),
+        ("c_array", "integer[]"),
+        ("c_domain", "{schema}.positive"),
+    ],
+)
+def test_any_type_keeps_the_database_name(
+    conn: psycopg.Connection[Any], database: Database, column: str, sql_type: str
+) -> None:
+    found = find_column(conn, f"{database.schema}.types", column, any_type=True)
+    assert (found.type_name, found.scale) == (sql_type.format(schema=database.schema), None)
+
+
 def test_names_follow_sql_rules(conn: psycopg.Connection[Any], database: Database) -> None:
     schema = database.schema
     # Unquoted names fold to lower case; quoted ones keep their case and spaces.

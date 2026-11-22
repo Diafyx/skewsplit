@@ -30,6 +30,7 @@ Contents:
 13. [Statistics from PostgreSQL](#13-statistics-from-postgresql)
 14. [Distribution from a sample](#14-distribution-from-a-sample)
 15. [Exact quantiles](#15-exact-quantiles)
+16. [Hash predicates](#16-hash-predicates)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point, apart
@@ -276,6 +277,9 @@ others follow in order of the values they match.
 | `range` | `c >= a` or `c > v` | The last range |
 | `range` | `c IS NOT NULL` | Everything non-NULL, when there is no boundary at all |
 
+Hash plans ([section 16](#16-hash-predicates)) have a fourth kind, `hash`,
+instead of `value` and `range`.
+
 A range's lower end is a split point (`>=`), a dominant value (`>`) or open.
 Its upper end is a split point or a dominant value (`<`), or open.
 
@@ -398,6 +402,9 @@ contract.
 | `nulls_exceed_share` | `rows` | `null_rows × N > total_rows`: the NULL predicate holds more than one partition's share |
 | `no_rows` | none | `total_rows` is 0 |
 
+Hash plans have one more warning, `full_scans`, listed first
+([section 16](#16-hash-predicates)).
+
 **Example.** A `date` column with 700 NULL rows out of 1000 and `N` = 3 gives
 `nulls_exceed_share` with `rows` 700, since 700 × 3 > 1000. Its skew score is
 2.1.
@@ -492,7 +499,7 @@ A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
 | Version | Change |
 |---------|--------|
 | 1.0 | The first version |
-| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row |
+| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Once a release
@@ -938,3 +945,93 @@ histogram, because every value has at least 1 row and is common, so all of
 its predicates are exact. A table that changes between the queries can make
 `H` differ from `h`, but the input stays valid, because `H` is counted by the
 query that reads the bounds, and that query leaves out the common values.
+
+## 16. Hash predicates
+
+A column whose type has no order the planner can use, such as `text`, `uuid`
+or `boolean`, can still be split by hashing its values: each predicate takes
+one remainder of a hash of the value's text. No index on the column can serve
+such a predicate, so every partition's query reads the whole table, and `N`
+predicates read it `N` times. Where the type allows them, the ranges of
+sections 3 to 5 are the better choice.
+
+**Input.** One JSON object:
+
+| Field | Meaning |
+|-------|---------|
+| `column` | As in section 1 |
+| `type` | The column's type as the database names it, such as `uuid` or `character varying(20)`. Not empty, and without the character U+0000. It is copied to the output and not otherwise read |
+| `partitions` | `N`, 1 to 10000 |
+| `null_rows` | Rows where the column is NULL. At least 0 |
+| `non_null_rows` | `R`, the other rows. At least 0. `total_rows`, `null_rows + R`, must be at most 2^63 - 1 |
+| `source` | Optional, as in section 1 |
+
+**Predicates.** The NULL predicate, then one predicate of kind `hash` for each
+remainder `i` from 0 to `N - 1`, in order:
+
+```sql
+((pg_catalog.hashtextextended("c"::text, 0) % N) + N) % N = i
+```
+
+The column is quoted as in section 5, and `N` and `i` are written as
+integers. `hashtextextended` returns a `bigint`, and PostgreSQL's `%` keeps
+the sign of the dividend, so `h % N` lies between `-N` and `N`, exclusive.
+Adding `N` and taking the remainder again gives a number from 0 to `N - 1`.
+The plan always has `N` hash predicates, even when `R` is smaller than `N`.
+These predicates have parentheses, but no `OR`, so they still combine with
+other conditions using `AND` as they are.
+
+**Estimates.** The hash spreads values, not rows. The predicate for remainder
+`i` is estimated at `(i + 1) × R / N - i × R / N` rows, as if every value had
+the same number of rows; they add up to `R`. All rows of a value have the same
+hash, so a value with many rows makes its remainder larger, and no hash plan
+can split it. The estimates cannot show this. Verify mode with counts
+measures the real sizes.
+
+**Every row exactly once.** For a NULL value, `hashtextextended` returns
+NULL, so every hash predicate is NULL and only `c IS NULL` matches. For any
+other value, the expression is one number from 0 to `N - 1`, so exactly one
+hash predicate matches, as long as the value has the same text in every
+partition's query. The text form of some types depends on settings of the
+session:
+
+- `TimeZone` for `timestamptz`;
+- `DateStyle` and `IntervalStyle` for dates, times and intervals;
+- `extra_float_digits` for `real` and `double precision`;
+- `lc_monetary` for `money`;
+- `bytea_output` for `bytea`.
+
+The queries of one Spark read share a JDBC URL. The PostgreSQL JDBC driver sets
+`DateStyle` and `extra_float_digits` for every connection, but it takes
+`TimeZone` from each executor's JVM. So for a `timestamptz` column, fix it in
+the URL, for example with `options=-c%20TimeZone=UTC`. Verify mode runs every
+predicate in one session, so it checks the plan, but not the settings of the
+readers.
+
+**Warnings.** In this order:
+
+| Code | Fields | When |
+|------|--------|------|
+| `full_scans` | none | Always: every hash predicate reads the whole table |
+| `nulls_exceed_share` | `rows` | As in section 8 |
+| `no_rows` | none | As in section 8 |
+
+**Output.** The object of section 10, with `type` as given, no `scale`, and
+`planned_partitions` equal to `N`. The skew score follows section 7. A hash
+predicate is
+`{"kind": "hash", "remainder": i, "sql": "...", "estimated_rows": ...}`.
+
+**Errors.** A field that is missing, unknown or of the wrong JSON type gives
+`invalid_input`. A column name that is empty or contains U+0000 gives
+`invalid_column`, and a type that does gives `unsupported_type`. `partitions`
+outside 1 to 10000 gives `invalid_partitions`. A negative row count, or a
+`total_rows` above 2^63 - 1, gives `invalid_rows`.
+
+**Example.** A `uuid` column `session_id` with 10 NULL rows and 1000 others,
+and `N` = 4. The plan is `"session_id" IS NULL` with 10 rows, then four
+predicates of 250 rows each, the first of them
+`((pg_catalog.hashtextextended("session_id"::text, 0) % 4) + 4) % 4 = 0`.
+The skew score is (2 × 250 × 4 × 1000 + 1010) / 2020 / 1000 = 0.990, and the
+warning is `full_scans`.
+
+The cases in `spec/fixtures/hash/` check this section.

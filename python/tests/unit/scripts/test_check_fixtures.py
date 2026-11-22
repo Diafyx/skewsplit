@@ -10,6 +10,7 @@ import pytest
 
 from check_fixtures import (
     check_fixture,
+    check_hash,
     check_name,
     check_plan,
     check_sample,
@@ -353,4 +354,94 @@ def test_main_checks_the_sample_fixtures(
     assert (
         problem
         == f"{sample / 'special.json'}: source warnings must be [{SPECIAL}], from unestimated_rows"
+    )
+
+
+def hash_fixture(name: str) -> Fixture:
+    text = (FIXTURES / "hash" / f"{name}.json").read_text(encoding="utf-8")
+    fixture: Fixture = json.loads(text, parse_float=Decimal)
+    return fixture
+
+
+@pytest.mark.parametrize("name", ["basic", "fewer-rows-than-partitions", "no-rows", "all-null"])
+def test_check_hash_accepts_the_plans_section_16_gives(name: str) -> None:
+    fixture = hash_fixture(name)
+    assert check_hash(fixture["input"], fixture["expected"]) == []
+
+
+def _swap_rows(plan: Fixture) -> None:
+    plan["predicates"][1]["estimated_rows"] += 1
+    plan["predicates"][2]["estimated_rows"] -= 1
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda plan: plan.update(column="other"), "column must be 'session_id', from the input"),
+        (lambda plan: plan.update(type="text"), "type must be 'uuid', from the input"),
+        (lambda plan: plan.update(planned_partitions=3), "planned_partitions must be 4"),
+        (lambda plan: plan.update(source={}), "source must be None, from the input"),
+        (lambda plan: plan["rows"].update(null=0), "rows must be {'total': 1010"),
+        (_swap_rows, "the predicates must be the NULL predicate and remainders 0 to N - 1"),
+        (
+            lambda plan: plan["predicates"][1].update(remainder=1),
+            "the predicates must be the NULL predicate and remainders 0 to N - 1",
+        ),
+        (
+            lambda plan: plan["predicates"].pop(),
+            "the predicates must be the NULL predicate and remainders 0 to N - 1",
+        ),
+        (lambda plan: plan.update(warnings=[]), "warnings must be [{'code': 'full_scans'}]"),
+        (lambda plan: plan.update(skew_score=Decimal("1.0")), "skew_score must be 0.99"),
+    ],
+)
+def test_check_hash_reports_a_plan_that_does_not_follow(
+    change: Callable[[Fixture], object], message: str
+) -> None:
+    fixture = copy.deepcopy(hash_fixture("basic"))
+    change(fixture["expected"])
+    problems = check_hash(fixture["input"], fixture["expected"])
+    assert problems[0].startswith(message)
+    # Moving a row makes 251 the largest predicate, so the skew score is off too.
+    assert len(problems) == (2 if change is _swap_rows else 1)
+
+
+@pytest.mark.parametrize(
+    ("changes", "warnings"),
+    [
+        (
+            {"null_rows": 1000},
+            [{"code": "full_scans"}, {"code": "nulls_exceed_share", "rows": 1000}],
+        ),
+        ({"null_rows": 0, "non_null_rows": 0}, [{"code": "full_scans"}, {"code": "no_rows"}]),
+    ],
+)
+def test_check_hash_expects_the_warnings_of_the_counts(
+    changes: Fixture, warnings: list[Fixture]
+) -> None:
+    fixture = copy.deepcopy(hash_fixture("basic"))
+    fixture["input"].update(changes)
+    problems = check_hash(fixture["input"], fixture["expected"])
+    assert f"warnings must be {warnings}, from the row counts" in problems
+
+
+def test_main_checks_the_hash_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hashed = tmp_path / "hash"
+    hashed.mkdir()
+    fixture = copy.deepcopy(hash_fixture("basic"))
+    fixture["expected"]["warnings"] = []
+    (hashed / "basic.json").write_text(json.dumps(fixture, default=str), encoding="utf-8")
+    error = {
+        "description": "d",
+        "input": [],
+        "expected": {"spec_version": VERSION, "error": {"code": "invalid_input"}},
+    }
+    (hashed / "error-input.json").write_text(json.dumps(error), encoding="utf-8")
+    monkeypatch.chdir(REPO)
+    assert main([str(tmp_path)]) == 1
+    [problem] = capsys.readouterr().err.splitlines()
+    assert problem == (
+        f"{hashed / 'basic.json'}: warnings must be [{{'code': 'full_scans'}}], from the row counts"
     )

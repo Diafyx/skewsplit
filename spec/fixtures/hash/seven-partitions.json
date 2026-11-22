@@ -1,0 +1,78 @@
+{
+  "description": "R = 100 and N = 7. Remainder i gets (i + 1) * 100 / 7 - i * 100 / 7: 14 - 0, 28 - 14, 42 - 28, 57 - 42, 71 - 57, 85 - 71 and 100 - 85, so 14, 14, 14, 15, 14, 14 and 15 rows. k = (2 * 15 * 7 * 1000 + 100) / 200 = 1050.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 7,
+    "null_rows": 0,
+    "non_null_rows": 100
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 7,
+    "planned_partitions": 7,
+    "rows": {
+      "total": 100,
+      "null": 0,
+      "non_null": 100
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 0",
+        "estimated_rows": 14
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 1",
+        "estimated_rows": 14
+      },
+      {
+        "kind": "hash",
+        "remainder": 2,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 2",
+        "estimated_rows": 14
+      },
+      {
+        "kind": "hash",
+        "remainder": 3,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 3",
+        "estimated_rows": 15
+      },
+      {
+        "kind": "hash",
+        "remainder": 4,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 4",
+        "estimated_rows": 14
+      },
+      {
+        "kind": "hash",
+        "remainder": 5,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 5",
+        "estimated_rows": 14
+      },
+      {
+        "kind": "hash",
+        "remainder": 6,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 7) + 7) % 7 = 6",
+        "estimated_rows": 15
+      }
+    ],
+    "skew_score": 1.05,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": null
+  }
+}

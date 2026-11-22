@@ -190,10 +190,12 @@ def test_the_bounds_are_at_the_positions_of_the_spec(conn: psycopg.Connection[An
     least = least_common_rows(200000)
     for j in (0, 1, 2, 4999, 5000, 9999, 10000):
         position = j * (h - 1) // 10000
+        # Ordered by the column, not by its text: a bare ORDER BY v would
+        # name the output column.
         row = conn.execute(
-            "SELECT v::text FROM exact_mixed WHERE v NOT IN"
-            " (SELECT v FROM exact_mixed GROUP BY v HAVING count(*) >= %s)"
-            " ORDER BY v OFFSET %s LIMIT 1",
+            "SELECT m.v::text AS bound FROM exact_mixed AS m WHERE m.v NOT IN"
+            " (SELECT c.v FROM exact_mixed AS c GROUP BY c.v HAVING count(*) >= %s)"
+            " ORDER BY m.v OFFSET %s LIMIT 1",
             (least, position),
         ).fetchone()
         assert row is not None

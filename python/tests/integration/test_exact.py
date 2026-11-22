@@ -54,7 +54,7 @@ DISTRIBUTIONS = {
     ),
     "exact_amounts": (
         "numeric(12, 2)",
-        "SELECT g * g / 100.0 FROM generate_series(1, 50000) AS g",
+        "SELECT g::bigint * g / 100.0 FROM generate_series(1, 50000) AS g",
     ),
     "exact_dates": (
         "date",

@@ -192,9 +192,12 @@ pgjdbc:
 	fi
 	echo "$(PGJDBC_SHA256)  $(PGJDBC_JAR)" | sha256sum --check --strict
 
-# The Spark benchmark (bench/README.md): build the skewed table, read it in each
-# way, and write $(REPORTS)/RESULTS.md. PySpark goes into its own environment
-# from bench/requirements.txt, checked by hash, and Spark gets the driver above.
+# The Spark benchmark (bench/README.md): build the skewed table, plan
+# skewsplit's predicates with the package in the project environment, read the
+# table in each way, and write $(REPORTS)/bench/ (RESULTS.md, the README
+# headline and the per-task chart from Spark's event log). PySpark goes into its
+# own environment from bench/requirements.txt, checked by hash, and Spark gets
+# the driver above.
 BENCH_ROWS ?= 15000000
 BENCH_PARTITIONS ?= 16
 BENCH_RUNS ?= 3
@@ -212,9 +215,12 @@ bench:
 	uv pip install --quiet --python $(BENCH_VENV) --require-hashes -r bench/requirements.txt
 	$(MAKE) --no-print-directory pgjdbc
 	psql -v rows=$(BENCH_ROWS) -f bench/skewed_table.sql
+	$(UV_RUN) python bench/plan.py --partitions $(BENCH_PARTITIONS) $(REPORTS)/bench-plans
+	mkdir -p $(REPORTS)/spark-events
 	$(BENCH_VENV)/bin/python bench/run.py --jdbc-jar $(PGJDBC_JAR) \
+		--plans $(REPORTS)/bench-plans --event-log $(REPORTS)/spark-events \
 		--partitions $(BENCH_PARTITIONS) --runs $(BENCH_RUNS) $(REPORTS)/bench.json
-	$(SCRIPT) bench/bench_report.py $(REPORTS)/bench.json $(REPORTS)/RESULTS.md
+	$(SCRIPT) bench/bench_report.py $(REPORTS)/bench.json $(REPORTS)/spark-events $(REPORTS)/bench
 
 # The oldest allowed versions of every direct dependency, in a separate
 # environment so uv.lock is never touched.

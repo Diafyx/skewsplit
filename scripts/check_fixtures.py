@@ -11,6 +11,8 @@ The array text fixtures in pg-array/ (spec section 12) have no plan; only
 their names and spec versions are checked here. For the statistics fixtures
 in pg-stats/ (spec section 13) and the sample fixtures in sample/ (section 14),
 it also checks the warnings in each result's source against its row counts.
+A hash plan in hash/ (section 16) follows from its row counts alone, so each
+is checked in full.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from typing import Any
 
 DEFAULT_DIR = Path("spec/fixtures")
 # Fixtures of the other functions of the spec, in subdirectories.
-SUBDIRS = ("pg-array", "pg-stats", "sample")
+SUBDIRS = ("pg-array", "pg-stats", "sample", "hash")
 SPEC = Path("spec/SPEC.md")
 _VERSION = re.compile(r"^Spec version: \*\*(\d+\.\d+)\*\*$", re.MULTILINE)
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\.json")
@@ -206,6 +208,45 @@ def check_sample(source: dict[str, Any]) -> list[str]:
     return []
 
 
+def check_hash(inp: dict[str, Any], plan: dict[str, Any]) -> list[str]:
+    """Check a hash plan against its input (spec section 16): it follows from the counts."""
+    n, nulls, non_null = inp["partitions"], inp["null_rows"], inp["non_null_rows"]
+    total = nulls + non_null
+    problems = [
+        f"{key} must be {expected!r}, from the input"
+        for key, expected in (
+            ("column", inp["column"]),
+            ("type", inp["type"]),
+            ("requested_partitions", n),
+            ("planned_partitions", n),
+            ("rows", {"total": total, "null": nulls, "non_null": non_null}),
+            ("source", inp.get("source")),
+        )
+        if plan.get(key) != expected
+    ]
+    quoted = '"' + inp["column"].replace('"', '""') + '"'
+    remainder = f"((pg_catalog.hashtextextended({quoted}::text, 0) % {n}) + {n}) % {n}"
+    expected = [{"kind": "null", "sql": f"{quoted} IS NULL", "estimated_rows": nulls}] + [
+        {
+            "kind": "hash",
+            "remainder": i,
+            "sql": f"{remainder} = {i}",
+            "estimated_rows": (i + 1) * non_null // n - i * non_null // n,
+        }
+        for i in range(n)
+    ]
+    if plan["predicates"] != expected:
+        problems.append("the predicates must be the NULL predicate and remainders 0 to N - 1")
+    warnings: list[dict[str, Any]] = [{"code": "full_scans"}]
+    if nulls * n > total:
+        warnings.append({"code": "nulls_exceed_share", "rows": nulls})
+    if total == 0:
+        warnings.append({"code": "no_rows"})
+    if plan["warnings"] != warnings:
+        problems.append(f"warnings must be {warnings}, from the row counts")
+    return problems + check_skew(n, plan)
+
+
 def check_fixture(path: Path, version: str, *, kind: str = "plan") -> list[str]:
     """Return the problems with one fixture file, each prefixed with its name.
 
@@ -224,6 +265,8 @@ def check_fixture(path: Path, version: str, *, kind: str = "plan") -> list[str]:
         problems += check_statistics(expected["input"]["source"])
     if kind == "sample" and not is_error:
         problems += check_sample(expected["input"]["source"])
+    if kind == "hash" and not is_error:
+        problems += check_hash(fixture["input"], expected)
     return [f"{path}: {problem}" for problem in problems]
 
 

@@ -5,7 +5,7 @@ import doctest
 import pytest
 
 import skewsplit
-from skewsplit.core import planner
+from skewsplit.core import hashing, planner
 
 DISTRIBUTION: dict[str, object] = {
     "column": "customer_id",
@@ -24,6 +24,7 @@ def test_the_names_of_the_api() -> None:
         "Predicate",
         "SpecError",
         "__version__",
+        "hash_plan",
         "plan",
     ]
     for name in skewsplit.__all__:
@@ -62,3 +63,26 @@ def test_plan_checks_the_distribution() -> None:
     with pytest.raises(skewsplit.SpecError) as caught:
         skewsplit.plan({**DISTRIBUTION, "type": "text"}, 4)
     assert caught.value.code == "unsupported_type"
+
+
+COUNTS = {"column": "session_id", "type": "uuid", "null_rows": 10, "non_null_rows": 1000}
+
+
+@pytest.mark.parametrize("partitions", [1, 4, 16])
+def test_hash_plan_adds_the_partitions_to_the_counts(partitions: int) -> None:
+    result = skewsplit.hash_plan(COUNTS, partitions)
+    assert result == hashing.hash_plan({**COUNTS, "partitions": partitions})
+    assert result.planned_partitions == partitions
+    assert "partitions" not in COUNTS
+
+
+def test_hash_plan_takes_partitions_only_as_the_argument() -> None:
+    with pytest.raises(skewsplit.SpecError, match="the argument of hash_plan") as caught:
+        skewsplit.hash_plan({**COUNTS, "partitions": 4}, 4)
+    assert caught.value.code == "invalid_input"
+
+
+def test_hash_plan_checks_the_counts() -> None:
+    with pytest.raises(skewsplit.SpecError) as caught:
+        skewsplit.hash_plan({**COUNTS, "non_null_rows": -1}, 4)
+    assert caught.value.code == "invalid_rows"

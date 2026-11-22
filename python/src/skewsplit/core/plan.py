@@ -11,8 +11,9 @@ if TYPE_CHECKING:
 
 SPEC_VERSION: Final = "1.1"
 
-PredicateKind = Literal["null", "value", "range"]
+PredicateKind = Literal["null", "value", "range", "hash"]
 WarningCode = Literal[
+    "full_scans",
     "dominant_value",
     "dominant_value_not_isolated",
     "fewer_partitions",
@@ -39,7 +40,8 @@ class Predicate:
     """One predicate of a plan, with the rows it is estimated to read.
 
     ``value`` is set for a ``value`` predicate; ``lower`` and ``upper`` belong
-    to a ``range`` predicate, where ``None`` means the end is open.
+    to a ``range`` predicate, where ``None`` means the end is open; and
+    ``remainder`` belongs to a ``hash`` predicate (spec section 16).
     """
 
     kind: PredicateKind
@@ -48,6 +50,7 @@ class Predicate:
     value: str | None = None
     lower: Bound | None = None
     upper: Bound | None = None
+    remainder: int | None = None
 
     def to_dict(self) -> JSON:
         """Return the predicate as in spec section 10."""
@@ -57,6 +60,8 @@ class Predicate:
         if self.kind == "range":
             out["lower"] = None if self.lower is None else self.lower.to_dict()
             out["upper"] = None if self.upper is None else self.upper.to_dict()
+        if self.kind == "hash":
+            out["remainder"] = self.remainder
         out["sql"] = self.sql
         out["estimated_rows"] = self.estimated_rows
         return out

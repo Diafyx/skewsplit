@@ -1,0 +1,60 @@
+{
+  "description": "The example of spec section 16. R = 1000 and N = 4, so each remainder i gets (i + 1) * 1000 / 4 - i * 1000 / 4 = 250 rows. The largest predicate has 250 rows of 1010, so k = (2 * 250 * 4 * 1000 + 1010) / 2020 = 990 and the skew score is 0.99. 10 * 4 > 1010 is false, so the only warning is full_scans.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 10,
+    "non_null_rows": 1000
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1010,
+      "null": 10,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 10
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 0",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 1",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "hash",
+        "remainder": 2,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 2",
+        "estimated_rows": 250
+      },
+      {
+        "kind": "hash",
+        "remainder": 3,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 4) + 4) % 4 = 3",
+        "estimated_rows": 250
+      }
+    ],
+    "skew_score": 0.99,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": null
+  }
+}

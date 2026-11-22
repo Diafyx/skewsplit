@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 # skewsplit.postgres.STRATEGIES and the default sample size, without importing
 # psycopg, which the postgres extra installs.
 STRATEGIES = ("statistics", "sample", "exact")
+METHODS = ("range", "hash")
 SAMPLE_ROWS = 30000
 
 OK = 0
@@ -105,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan = command("plan", "Plan predicates from the column's statistics, a sample or every row")
     plan.add_argument("--column", required=True, help="the column to split, not quoted")
     plan.add_argument("--partitions", required=True, type=int, metavar="N")
+    _method_option(plan)
     _planning_options(plan)
     plan.add_argument(
         "--format",
@@ -122,6 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("--column", help="the column to split, not quoted")
     verify.add_argument("--partitions", type=int, metavar="N")
+    _method_option(verify)
     _planning_options(verify, timeout=False)
     verify.add_argument(
         "--counts",
@@ -148,6 +151,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _planning_options(stats)
     return parser
+
+
+def _method_option(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument(
+        "--method",
+        choices=METHODS,
+        help="range: ranges of the column's values, which an index can serve (the default);"
+        " hash: one remainder of a hash of each value's text per partition, for a column"
+        " of any type, but every partition reads the whole table",
+    )
 
 
 def _planning_options(sub: argparse.ArgumentParser, *, timeout: bool = True) -> None:
@@ -191,13 +204,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     sampling = (args.sample_rows, args.max_sample_rows, args.seed) != (None, None, None)
+    method = getattr(args, "method", None)
     if args.command == "verify":
         if args.plan is not None and (args.column is not None or args.partitions is not None):
             parser.error("verify takes --plan, or --column and --partitions, not both")
         if args.plan is None and (args.column is None or args.partitions is None):
             parser.error("verify needs --plan, or --column and --partitions")
-        if args.plan is not None and (args.strategy is not None or sampling):
-            parser.error("--strategy and its options are for planning, not for --plan")
+        if args.plan is not None and (method is not None or args.strategy is not None or sampling):
+            parser.error("--method, --strategy and its options are for planning, not for --plan")
+    if method == "hash" and (args.strategy is not None or sampling):
+        parser.error("--strategy and its options are for --method range")
     if sampling and args.strategy != "sample":
         parser.error("--sample-rows, --max-sample-rows and --seed need --strategy sample")
     smallest = SAMPLE_ROWS if args.sample_rows is None else args.sample_rows
@@ -267,6 +283,8 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
 def _options(args: argparse.Namespace) -> dict[str, Any]:
     """The keyword arguments of postgres.plan and postgres.distribution that were given."""
     options: dict[str, Any] = {}
+    if getattr(args, "method", None) == "hash":
+        options["method"] = "hash"
     if args.strategy == "exact":
         options["strategy"] = "exact"
     if args.strategy == "sample":

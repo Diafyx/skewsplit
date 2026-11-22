@@ -1,0 +1,17 @@
+{
+  "description": "A hash input has no mcv; an unknown field is invalid_input.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 10,
+    "non_null_rows": 1000,
+    "mcv": []
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

@@ -105,7 +105,8 @@ class Column:
         table: The table's name, as stored in the catalog.
         name: The column's name, as stored in the catalog.
         qualified: The schema-qualified table name, quoted where SQL needs it.
-        type_name: The spec type of the column (spec section 2).
+        type_name: The spec type of the column (spec section 2), or for
+            ``find_column(..., any_type=True)`` the database's name for another type.
         scale: The scale for ``numeric``, otherwise ``None``.
         relid: The table's OID.
     """
@@ -136,7 +137,9 @@ class TableFacts:
     modified_since_analyze: int | None
 
 
-def find_column(conn: psycopg.Connection[Any], table: str, column: str) -> Column:
+def find_column(
+    conn: psycopg.Connection[Any], table: str, column: str, *, any_type: bool = False
+) -> Column:
     """Find a column and check that the planner can split it.
 
     Args:
@@ -148,6 +151,9 @@ def find_column(conn: psycopg.Connection[Any], table: str, column: str) -> Colum
             ``"Sales"."Orders"``.
         column: The column's exact name, not quoted, as in Spark's
             ``partitionColumn``.
+        any_type: Accept a column of any type, for hash predicates (spec
+            section 16). A type the planner cannot split then keeps the
+            database's name for it, such as ``uuid``, and no scale.
 
     Raises:
         CatalogError: If the table or column does not exist, the column's
@@ -165,6 +171,8 @@ def find_column(conn: psycopg.Connection[Any], table: str, column: str) -> Colum
     if type_oid is None:
         _fail("column_not_found", f"{qualified} has no column {column!r}")
     spec_type = column_type(type_oid, typmod)
+    if spec_type is None and any_type:
+        spec_type = (sql_type, None)
     if spec_type is None:
         _fail(
             "unsupported_type",

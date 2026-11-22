@@ -1,0 +1,15 @@
+{
+  "description": "non_null_rows is required.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 4,
+    "null_rows": 10
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

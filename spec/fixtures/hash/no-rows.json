@@ -1,0 +1,57 @@
+{
+  "description": "An empty table. Every predicate has 0 estimated rows, but the plan still has N = 3 hash predicates, so rows added later are read. total_rows is 0, so the skew score is null and no_rows is given; nulls_exceed_share is not, since 0 * 3 > 0 is false.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 3,
+    "null_rows": 0,
+    "non_null_rows": 0
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 3,
+    "planned_partitions": 3,
+    "rows": {
+      "total": 0,
+      "null": 0,
+      "non_null": 0
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 3) + 3) % 3 = 0",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 3) + 3) % 3 = 1",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 2,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 3) + 3) % 3 = 2",
+        "estimated_rows": 0
+      }
+    ],
+    "skew_score": null,
+    "warnings": [
+      {
+        "code": "full_scans"
+      },
+      {
+        "code": "no_rows"
+      }
+    ],
+    "source": null
+  }
+}

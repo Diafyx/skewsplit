@@ -33,6 +33,15 @@ ANALYZE {t}
 ROWS = 20000
 PARTITIONS = 8
 
+# 10000 rows with a uuid column, which ranges cannot split, 500 of them NULL.
+SESSIONS = """
+CREATE TABLE {t} (id bigint, session uuid) WITH (autovacuum_enabled = false);
+INSERT INTO {t}
+SELECT g, CASE WHEN g % 20 = 0 THEN NULL ELSE md5(g::text)::uuid END
+FROM generate_series(1, 10000) AS g
+"""
+SESSION_ROWS = 10000
+
 # A column whose name has a backslash before u0022, which Scala 2.12 would
 # read as a quote if the backslash were not escaped, and a non-ASCII letter.
 AWKWARD_COLUMN = "v\\u0022 ü"
@@ -53,6 +62,11 @@ NASTY_COLUMN = (
 @pytest.fixture(scope="module")
 def skewed(database: Database) -> str:
     return database.create("skewed", SKEWED)
+
+
+@pytest.fixture(scope="module")
+def sessions(database: Database) -> str:
+    return database.create("sessions", SESSIONS)
 
 
 @pytest.fixture(scope="module")
@@ -107,6 +121,28 @@ def test_a_read_with_the_predicates_returns_every_row_once(
     assert plan.skew_score is not None
     bound = 2 * bucket * PARTITIONS / ROWS + 0.001
     assert abs(actual / 1000 - plan.skew_score) <= bound + 1e-9
+
+
+def test_a_read_with_hash_predicates_returns_every_row_once(
+    spark: Any,  # noqa: ANN401 -- PySpark has no types here
+    database: Database,
+    sessions: str,
+) -> None:
+    from pyspark.sql.functions import spark_partition_id  # noqa: PLC0415
+
+    plan = postgres.plan(database.dsn, sessions, "session", PARTITIONS, method="hash")
+    assert [part.kind for part in plan.parts[1:]] == ["hash"] * PARTITIONS
+    df = run_pyspark_snippet(plan.to_pyspark(), spark, database, sessions)["df"]
+    assert df.rdd.getNumPartitions() == len(plan.predicates)
+    partition = spark_partition_id()
+    sizes = [df.where(partition == p).count() for p in range(len(plan.predicates))]
+    assert sum(sizes) == df.count() == SESSION_ROWS
+    assert df.select("id").distinct().count() == SESSION_ROWS
+    # Each partition holds exactly its predicate's rows, as verify counts them.
+    found = postgres.verify(database.dsn, sessions, "session", plan.predicates, counts=True)
+    assert found.ok
+    assert tuple(sizes) == found.predicate_rows
+    assert sizes[0] == 500
 
 
 def test_the_pyspark_snippet_with_an_awkward_column(

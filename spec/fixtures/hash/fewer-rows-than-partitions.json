@@ -1,0 +1,70 @@
+{
+  "description": "R = 2 is smaller than N = 5, and the plan still has 5 hash predicates. Remainder i gets (i + 1) * 2 / 5 - i * 2 / 5: 0, 0, 1, 0 and 1 rows. total_rows is 3 and 1 * 5 > 3, so nulls_exceed_share is given after full_scans. k = (2 * 1 * 5 * 1000 + 3) / 6 = 1667.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 5,
+    "null_rows": 1,
+    "non_null_rows": 2
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 5,
+    "planned_partitions": 5,
+    "rows": {
+      "total": 3,
+      "null": 1,
+      "non_null": 2
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 1
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 5) + 5) % 5 = 0",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 1,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 5) + 5) % 5 = 1",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 2,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 5) + 5) % 5 = 2",
+        "estimated_rows": 1
+      },
+      {
+        "kind": "hash",
+        "remainder": 3,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 5) + 5) % 5 = 3",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "hash",
+        "remainder": 4,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 5) + 5) % 5 = 4",
+        "estimated_rows": 1
+      }
+    ],
+    "skew_score": 1.667,
+    "warnings": [
+      {
+        "code": "full_scans"
+      },
+      {
+        "code": "nulls_exceed_share",
+        "rows": 1
+      }
+    ],
+    "source": null
+  }
+}

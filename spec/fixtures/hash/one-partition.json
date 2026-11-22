@@ -1,0 +1,42 @@
+{
+  "description": "N = 1 gives one hash predicate, whose remainder is always 0. It has all 7 non-NULL rows. 3 * 1 > 10 is false. k = (2 * 7 * 1 * 1000 + 10) / 20 = 700.",
+  "input": {
+    "column": "session_id",
+    "type": "uuid",
+    "partitions": 1,
+    "null_rows": 3,
+    "non_null_rows": 7
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "column": "session_id",
+    "type": "uuid",
+    "requested_partitions": 1,
+    "planned_partitions": 1,
+    "rows": {
+      "total": 10,
+      "null": 3,
+      "non_null": 7
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"session_id\" IS NULL",
+        "estimated_rows": 3
+      },
+      {
+        "kind": "hash",
+        "remainder": 0,
+        "sql": "((pg_catalog.hashtextextended(\"session_id\"::text, 0) % 1) + 1) % 1 = 0",
+        "estimated_rows": 7
+      }
+    ],
+    "skew_score": 0.7,
+    "warnings": [
+      {
+        "code": "full_scans"
+      }
+    ],
+    "source": null
+  }
+}

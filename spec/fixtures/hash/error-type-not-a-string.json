@@ -1,0 +1,16 @@
+{
+  "description": "type must be a JSON string.",
+  "input": {
+    "column": "session_id",
+    "type": 2950,
+    "partitions": 4,
+    "null_rows": 10,
+    "non_null_rows": 1000
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

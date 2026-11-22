@@ -1,9 +1,10 @@
-"""Plan from a table's statistics, a sample of it or every row: the strategy is the caller's choice.
+"""Plan from a table's statistics, a sample of it or every row, or plan hash predicates.
 
 ``statistics`` reads ``pg_stats`` and never the table (spec section 13).
 ``sample`` reads a sample of the table with ``TABLESAMPLE`` (section 14), for
 when the statistics are missing or out of date. ``exact`` reads every row
 (section 15), for when accuracy matters more than planning time.
+``method="hash"`` plans hash predicates for a column of any type (section 16).
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from skewsplit.postgres.exact import exact_distribution, plan_from_exact
+from skewsplit.postgres.hashing import plan_from_hash
 from skewsplit.postgres.sample import DEFAULT_SAMPLE_ROWS, plan_from_sample, sample_distribution
 from skewsplit.postgres.statistics import distribution as statistics_distribution
 from skewsplit.postgres.statistics import plan_from_statistics
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
 
 Strategy = Literal["statistics", "sample", "exact"]
 STRATEGIES: Final[tuple[Strategy, ...]] = ("statistics", "sample", "exact")
+Method = Literal["range", "hash"]
+METHODS: Final[tuple[Method, ...]] = ("range", "hash")
 
 
 def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
@@ -91,7 +95,8 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     column: str,
     partitions: int,
     *,
-    strategy: Strategy = "statistics",
+    method: Method = "range",
+    strategy: Strategy | None = None,
     sample_rows: int | None = None,
     max_sample_rows: int | None = None,
     seed: int | None = None,
@@ -103,8 +108,25 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     the number of predicates to plan besides the NULL predicate. The plan's
     ``source`` also has ``planning_ms``: the time spent finding the column,
     reading its distribution and planning.
+
+    ``method="hash"`` plans hash predicates instead of ranges (spec section
+    16), for a column of any type, such as ``text`` or ``uuid``. It counts
+    the rows with one query and takes no ``strategy``. No index can serve
+    hash predicates, so each partition's query reads the whole table.
     """
-    chosen = _strategy(strategy, sample_rows, max_sample_rows, seed)
+    if method not in METHODS:
+        msg = f"method must be one of {', '.join(METHODS)}, not {method!r}"
+        raise ValueError(msg)
+    if method == "hash":
+        if (strategy, sample_rows, max_sample_rows, seed) != (None, None, None, None):
+            msg = "strategy, sample_rows, max_sample_rows and seed are for method='range'"
+            raise ValueError(msg)
+        return plan_from_hash(
+            database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+        )
+    chosen = _strategy(
+        "statistics" if strategy is None else strategy, sample_rows, max_sample_rows, seed
+    )
     if chosen == "exact":
         return plan_from_exact(
             database, table, column, partitions, statement_timeout_ms=statement_timeout_ms

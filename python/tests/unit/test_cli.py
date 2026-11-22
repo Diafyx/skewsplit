@@ -515,6 +515,7 @@ def test_the_strategies_are_the_adapters() -> None:
     from skewsplit.postgres import planning, sample  # noqa: PLC0415
 
     assert cli.STRATEGIES == planning.STRATEGIES
+    assert cli.METHODS == planning.METHODS
     assert cli.SAMPLE_ROWS == sample.DEFAULT_SAMPLE_ROWS
 
 
@@ -574,8 +575,38 @@ def test_plan_stats_and_verify_pass_the_planning_options(
 
 
 @pytest.mark.parametrize(
+    ("given", "options"),
+    [
+        (("--method", "range"), {}),
+        (("--method", "hash"), {"method": "hash"}),
+        (
+            ("--method", "hash", "--statement-timeout-ms", "5"),
+            {"method": "hash", "statement_timeout_ms": 5},
+        ),
+    ],
+)
+def test_plan_and_verify_pass_the_method(
+    capsys: pytest.CaptureFixture[str], fake: Fake, given: tuple[str, ...], options: dict[str, Any]
+) -> None:
+    extra = [options] if options else []
+    assert run(capsys, *PLAN_ARGS, *given)[0] == cli.OK
+    assert run(capsys, *VERIFY_ARGS, *FRESH, *given)[0] == cli.OK
+    planned = [call for call in fake.calls if call[0] == "plan"]
+    assert planned == [
+        ("plan", TABLE, "customer_id", 4, *extra),
+        ("plan", TABLE, "customer_id", 4, *extra),
+    ]
+
+
+@pytest.mark.parametrize(
     ("argv", "message"),
     [
+        ((*PLAN_ARGS, "--method", "hash", "--strategy", "statistics"), "for --method range"),
+        ((*PLAN_ARGS, "--method", "hash", "--strategy", "sample"), "for --method range"),
+        ((*VERIFY_ARGS, *FRESH, "--method", "hash", "--seed", "1"), "for --method range"),
+        ((*PLAN_ARGS, "--method", "mod"), "invalid choice: 'mod'"),
+        ((*STATS_ARGS, "--method", "hash"), "unrecognized arguments: --method hash"),
+        ((*VERIFY_ARGS, "--plan", "p.json", "--method", "hash"), "not for --plan"),
         ((*PLAN_ARGS, "--strategy", "fast"), "invalid choice: 'fast'"),
         ((*PLAN_ARGS, "--sample-rows", "5"), "need --strategy sample"),
         ((*PLAN_ARGS, "--strategy", "exact", "--sample-rows", "5"), "need --strategy sample"),

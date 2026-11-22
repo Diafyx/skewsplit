@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Diafyx/skewsplit/blob/main/spec/schema/hash.schema.json",
+  "title": "skewsplit hash fixture",
+  "description": "The row counts of one column, and the hash plan or error every implementation must produce from them, as defined in spec/SPEC.md section 16. Warning and error messages are left out: their wording is not part of the contract.",
+  "type": "object",
+  "required": ["description", "input", "expected"],
+  "properties": {
+    "description": {
+      "description": "How the expected result follows from the spec, with the arithmetic.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": true,
+    "expected": true
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "input": {"$ref": "#/$defs/input"},
+        "expected": {"$ref": "#/$defs/plan"}
+      }
+    },
+    {
+      "description": "An error fixture. Its input is invalid on purpose, so it may be any JSON value.",
+      "properties": {
+        "expected": {"$ref": "#/$defs/error"}
+      }
+    }
+  ],
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "spec_version": {"const": "1.1"},
+    "partitions": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "input": {
+      "description": "The input of spec section 16.",
+      "type": "object",
+      "required": ["column", "type", "partitions", "null_rows", "non_null_rows"],
+      "properties": {
+        "column": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1},
+        "partitions": {"$ref": "#/$defs/partitions"},
+        "null_rows": {"$ref": "#/$defs/count"},
+        "non_null_rows": {"$ref": "#/$defs/count"},
+        "source": true
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "description": "A hash plan (spec sections 10 and 16).",
+      "type": "object",
+      "required": [
+        "spec_version", "column", "type", "requested_partitions", "planned_partitions",
+        "rows", "predicates", "skew_score", "warnings", "source"
+      ],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "column": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1},
+        "requested_partitions": {"$ref": "#/$defs/partitions"},
+        "planned_partitions": {"$ref": "#/$defs/partitions"},
+        "rows": {
+          "type": "object",
+          "required": ["total", "null", "non_null"],
+          "properties": {
+            "total": {"$ref": "#/$defs/count"}, "null": {"$ref": "#/$defs/count"},
+            "non_null": {"$ref": "#/$defs/count"}
+          },
+          "additionalProperties": false
+        },
+        "predicates": {
+          "type": "array",
+          "prefixItems": [{"$ref": "#/$defs/null_predicate"}],
+          "items": {"$ref": "#/$defs/hash_predicate"},
+          "minItems": 2
+        },
+        "skew_score": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0}]},
+        "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}, "minItems": 1},
+        "source": true
+      },
+      "additionalProperties": false
+    },
+    "null_predicate": {
+      "type": "object",
+      "required": ["kind", "sql", "estimated_rows"],
+      "properties": {
+        "kind": {"const": "null"},
+        "sql": {"type": "string", "pattern": " IS NULL$"},
+        "estimated_rows": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "hash_predicate": {
+      "type": "object",
+      "required": ["kind", "remainder", "sql", "estimated_rows"],
+      "properties": {
+        "kind": {"const": "hash"},
+        "remainder": {"type": "integer", "minimum": 0, "maximum": 9999},
+        "sql": {
+          "type": "string",
+          "pattern": "^\\(\\(pg_catalog\\.hashtextextended\\(\".*\"::text, 0\\) % [0-9]+\\) \\+ [0-9]+\\) % [0-9]+ = [0-9]+$"
+        },
+        "estimated_rows": {"$ref": "#/$defs/count"}
+      },
+      "additionalProperties": false
+    },
+    "warning": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["code"],
+          "properties": {"code": {"enum": ["full_scans", "no_rows"]}},
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "rows"],
+          "properties": {"code": {"const": "nulls_exceed_share"}, "rows": {"$ref": "#/$defs/count"}},
+          "additionalProperties": false
+        }
+      ]
+    },
+    "error": {
+      "description": "An error (spec section 16).",
+      "type": "object",
+      "required": ["spec_version", "error"],
+      "properties": {
+        "spec_version": {"$ref": "#/$defs/spec_version"},
+        "error": {
+          "type": "object",
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_input", "invalid_column", "unsupported_type", "invalid_partitions",
+                "invalid_rows"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

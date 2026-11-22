@@ -1,0 +1,12 @@
+{
+  "description": "The input must be a JSON object.",
+  "input": [
+    "session_id"
+  ],
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_input"
+    }
+  }
+}

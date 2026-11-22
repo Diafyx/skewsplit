@@ -60,6 +60,7 @@ pytest_add_cli_args_test_selection = [
   "tests/unit/test_cli.py",
   "tests/unit/test_codecs.py",
   "tests/unit/test_conformance.py",
+  "tests/unit/test_hashing.py",
   "tests/unit/test_inputs.py",
   "tests/unit/test_pgarray.py",
   "tests/unit/test_plan.py",

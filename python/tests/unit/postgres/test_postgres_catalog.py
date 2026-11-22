@@ -248,6 +248,33 @@ def test_an_unsupported_type(type_oid: int, typmod: int, sql_type: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("type_oid", "typmod", "sql_type", "expected"),
+    [
+        (25, -1, "text", ("text", None)),
+        (2950, -1, "uuid", ("uuid", None)),
+        (1043, 24, "character varying(20)", ("character varying(20)", None)),
+        (1700, -1, "numeric", ("numeric", None)),
+        # A type the planner can split keeps its spec name and scale.
+        (1700, numeric_typmod(10, 2), "numeric(10,2)", ("numeric", 2)),
+        (23, -1, "integer", ("int4", None)),
+    ],
+)
+def test_any_type_is_found_for_hash_predicates(
+    type_oid: int, typmod: int, sql_type: str, expected: tuple[str, int | None]
+) -> None:
+    _, conn = connect(catalog_row(type_oid=type_oid, typmod=typmod, sql_type=sql_type))
+    found = find_column(conn, 'sales."Orders"', "id", any_type=True)
+    assert (found.type_name, found.scale) == expected
+
+
+def test_any_type_still_checks_the_role() -> None:
+    _, conn = connect(catalog_row(type_oid=25, sql_type="text", can_read=False))
+    with pytest.raises(CatalogError) as raised:
+        find_column(conn, 'sales."Orders"', "id", any_type=True)
+    assert raised.value.code == "permission_denied"
+
+
 def test_a_column_the_role_may_not_read() -> None:
     error = error_of(catalog_row(can_read=False))
     assert error.code == "permission_denied"

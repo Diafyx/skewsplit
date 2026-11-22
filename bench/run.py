@@ -29,6 +29,8 @@ import bench_methods as m
 # Rows per round trip. Without it the driver buffers each partition in memory.
 FETCH_SIZE = "10000"
 STATUS_TIMEOUT = 60.0
+# The job group of the queries that plan a read, so no measured read counts them.
+SETUP_GROUP = "setup"
 
 
 def connection() -> dict[str, str]:
@@ -131,6 +133,10 @@ def measure(  # noqa: PLR0913 -- one argument per input of the read
     skewsplit's plans were made before Spark started, so their planning time
     is the one skewsplit measured; the other methods' is the query here.
     """
+    # A job group lasts until the next one is set. Without this, the bounds
+    # query of the next read would run in this read's group, after its tasks
+    # were counted, and the event log would have one task more.
+    spark.sparkContext.setJobGroup(SETUP_GROUP, "planning queries, outside every measured read")
     start = time.perf_counter()
     df, planned = frame(
         spark, jdbc, plans=plans, method=method, column=column, partitions=partitions

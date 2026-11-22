@@ -20,7 +20,13 @@ from psycopg.rows import tuple_row
 from skewsplit.core.planner import plan
 from skewsplit.core.sample import from_sample
 from skewsplit.postgres.catalog import find_column
-from skewsplit.postgres.connection import check_timeout, connection, set_timeout
+from skewsplit.postgres.connection import (
+    check_timeout,
+    connection,
+    run,
+    set_timeout,
+    where_clause,
+)
 
 if TYPE_CHECKING:
     import psycopg
@@ -46,11 +52,11 @@ SELECT pg_catalog.set_config('DateStyle', 'ISO', true),
 """
 # The planner's estimate of the rows of the table and of its partitions and
 # inheritance children. Without statistics, it comes from the table's size.
-_ESTIMATE: Final = "EXPLAIN (FORMAT JSON) SELECT FROM {table}"
+_ESTIMATE: Final = "EXPLAIN (FORMAT JSON) SELECT FROM {table}{where}"
 # The LIMIT applies to the sampled rows, before they are counted.
 _SAMPLE: Final = """
 SELECT s.v::text, count(*)
-FROM (SELECT {column} AS v FROM {table}{sampling} LIMIT %(limit)s) AS s
+FROM (SELECT {column} AS v FROM {table}{sampling}{where} LIMIT %(limit)s) AS s
 GROUP BY s.v
 """
 
@@ -70,6 +76,7 @@ class Sample:
         limit: The most rows the sample may read, ``C``.
         null_rows: The sampled rows where the column is NULL.
         values: Each distinct non-NULL value as text, with its sampled rows.
+        where: The caller's filter, or ``None``.
     """
 
     column: Column
@@ -80,6 +87,7 @@ class Sample:
     limit: int
     null_rows: int
     values: tuple[tuple[str, int], ...]
+    where: str | None = None
 
     @property
     def rows(self) -> int:
@@ -115,7 +123,7 @@ class Sample:
 
     def report(self) -> dict[str, object]:
         """Return the fields this adapter adds to the plan's ``source``."""
-        return {
+        report: dict[str, object] = {
             "table": self.column.qualified,
             "method": self.method,
             "percent": self.percent,
@@ -123,6 +131,9 @@ class Sample:
             "planner_rows": self.planner_rows,
             "sample_limit": self.limit,
         }
+        if self.where is not None:
+            report["where"] = self.where
+        return report
 
     def warnings(self) -> list[dict[str, object]]:
         """Return the warnings this adapter adds after those of the conversion."""
@@ -162,6 +173,7 @@ def read_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's flag
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Sample:
     """Read a sample of a column, counted by value in the database.
 
@@ -177,6 +189,9 @@ def read_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's flag
         seed: A ``REPEATABLE`` seed, so the same table gives the same sample.
         statement_timeout_ms: A ``statement_timeout`` for each query, in
             milliseconds; by default the session's.
+        where: A filter, so the sample and its estimates are of the rows it
+            keeps (spec section 18). It is SQL from the caller: only pass
+            text you trust.
 
     Raises:
         ValueError: If a size or the timeout is not positive, or the limit is
@@ -190,7 +205,8 @@ def read_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's flag
     with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
         cursor.execute(_SETTINGS)
         set_timeout(cursor, statement_timeout_ms)
-        explained = cursor.execute(sql.SQL(_ESTIMATE).format(table=table)).fetchone()
+        filtered = where_clause(where)
+        explained = run(cursor, sql.SQL(_ESTIMATE).format(table=table, where=filtered)).fetchone()
         planner_rows = _plan_rows(cast("tuple[object]", explained)[0])
         method, percent = sampling_method(planner_rows, sample_rows)
         params: dict[str, object] = {"limit": limit}
@@ -204,9 +220,9 @@ def read_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's flag
                 sampling = sql.Composed([sampling, sql.SQL(" REPEATABLE (%(seed)s)")])
                 params["seed"] = seed
         query = sql.SQL(_SAMPLE).format(
-            column=sql.Identifier(column.name), table=table, sampling=sampling
+            column=sql.Identifier(column.name), table=table, sampling=sampling, where=filtered
         )
-        counted = cast("list[tuple[str | None, int]]", cursor.execute(query, params).fetchall())
+        counted = cast("list[tuple[str | None, int]]", run(cursor, query, params).fetchall())
     return Sample(
         column=column,
         method=method,
@@ -217,6 +233,7 @@ def read_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's flag
         limit=limit,
         null_rows=sum(rows for value, rows in counted if value is None),
         values=tuple((value, rows) for value, rows in counted if value is not None),
+        where=where,
     )
 
 
@@ -229,6 +246,7 @@ def sample_distribution(  # noqa: PLR0913 -- the keyword-only options are the CL
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> JSON:
     """Return a column's distribution, from a sample of the table.
 
@@ -251,6 +269,7 @@ def sample_distribution(  # noqa: PLR0913 -- the keyword-only options are the CL
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     # The conversion does not depend on the partitions; any valid number will do.
     data = from_sample(sample.conversion_input(1))
@@ -271,6 +290,7 @@ def plan_from_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates for a column from a sample of the table.
 
@@ -287,6 +307,7 @@ def plan_from_sample(  # noqa: PLR0913 -- the keyword-only options are the CLI's
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     result = plan({**data, "partitions": partitions})
     elapsed_ms = (perf_counter() - start) * 1000

@@ -32,6 +32,7 @@ Contents:
 15. [Exact quantiles](#15-exact-quantiles)
 16. [Hash predicates](#16-hash-predicates)
 17. [Choosing a strategy](#17-choosing-a-strategy)
+18. [Filtered reads](#18-filtered-reads)
 
 In this document, `/` on integers is floor division, and every division is of
 a non-negative number by a positive one. No step uses floating point, apart
@@ -500,7 +501,7 @@ A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
 | Version | Change |
 |---------|--------|
 | 1.0 | The first version |
-| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order. [Section 17](#17-choosing-a-strategy): choosing a strategy |
+| 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order. [Section 17](#17-choosing-a-strategy): choosing a strategy. [Section 18](#18-filtered-reads): filtered reads |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Once a release
@@ -1051,6 +1052,7 @@ The first row of this table that applies chooses:
 | Reason | When | Strategy |
 |--------|------|----------|
 | `unsupported_type` | The column's type is not in section 2, and the caller did not ask for ranges | hash predicates |
+| `filter_given` | The read is filtered ([section 18](#18-filtered-reads)), and the statistics describe the whole table | sample |
 | `statistics_missing` | Reading the statistics fails with the error that `ANALYZE` must run first (section 13, Reading the statistics) | sample |
 | `statistics_stale` | The converted statistics have the warning `stale_statistics`: more than a tenth of the rows changed since `ANALYZE` | sample |
 | `statistics_unchecked` | `modified_since_analyze` is `null`, so the changes since `ANALYZE` are not known, as for a table with partitions or inheritance children | sample |
@@ -1070,3 +1072,42 @@ The plan's `source` is the chosen strategy's, with one more field:
 `strategy` is `statistics`, `sample` or `hash`, and `reason` is the row of the
 table. As elsewhere, the message wording is not part of the contract.
 `planning_ms` includes the time spent choosing.
+
+## 18. Filtered reads
+
+A read can take part of a table, such as the last 90 days, with a filter: a
+SQL condition that Spark's read adds to every predicate. The predicates are
+planned for the rows the filter keeps, and verify mode checks those rows.
+
+The filter is SQL from the caller, and an adapter runs it as it is. Only the
+caller can know whether it is safe, so it must come from someone the caller
+trusts, never from a user of the caller's program. An adapter keeps two
+guarantees all the same:
+
+- Every query that holds the filter, or a predicate, runs as one statement:
+  a `;` inside it cannot start another, which could end the read-only
+  transaction. PostgreSQL's extended query protocol guarantees this.
+- The filter is placed in parentheses, on lines of its own, so a filter
+  that uses `OR`, or ends in a `--` comment, keeps its meaning next to the
+  rest of the query. These are not a defence: a filter that closes the
+  parenthesis itself can still change the query, which is why it must be
+  trusted.
+
+Each strategy treats the filter like this:
+
+| Strategy | With a filter |
+|----------|---------------|
+| Statistics (section 13) | `pg_stats` describes the whole table, so the estimates ignore the filter. The predicates still cover every row it keeps, but each can read more or fewer rows than its estimate. `source.warnings` has `filter_ignored`, with the filter as `where`, after the warnings of section 13 |
+| Sample (section 14) | `E` is the planner's estimate of the rows the filter keeps: `EXPLAIN (FORMAT JSON) SELECT FROM table WHERE (filter)`. The sample reads `FROM table TABLESAMPLE ... WHERE (filter)`, so `n` and `T` count the rows the filter keeps |
+| Exact quantiles (section 15) | Every query reads `FROM table WHERE (filter)` |
+| Hash predicates (section 16) | The count reads `FROM table WHERE (filter)` |
+| Choosing a strategy (section 17) | The statistics are never chosen: the row `filter_given` comes after `unsupported_type` and reads a sample |
+
+The plan's `source` has the filter as `where`. Verify mode (section 6) checks
+`FROM table WHERE (filter)`: every row the filter keeps matches exactly one
+predicate, and each count is of the rows the predicate and the filter both
+keep.
+
+To read with the plan, Spark must apply the same filter. Either add it to
+each predicate, as `(predicate) AND (filter)`, or read from a subquery that
+applies it, such as `(SELECT * FROM table WHERE filter) AS t`.

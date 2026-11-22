@@ -36,7 +36,13 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         pass
 
-    def execute(self, query: object, params: dict[str, object] | None = None) -> FakeCursor:
+    def execute(
+        self,
+        query: object,
+        params: dict[str, object] | None = None,
+        *,
+        binary: bool = False,  # noqa: ARG002 -- the caller-SQL queries pass True
+    ) -> FakeCursor:
         text = query.as_string(None) if isinstance(query, sql.Composable) else str(query)
         self.conn.queries.append((text, params))
         self.result = self.conn.results.pop(0)
@@ -84,7 +90,7 @@ def test_one_query_counts_the_rows_in_a_read_only_transaction() -> None:
             "SELECT pg_catalog.set_config('statement_timeout', %(timeout)s, true)",
             {"timeout": "500"},
         ),
-        ('SELECT count(*), count("Session") FROM sales."Orders"', None),
+        ('SELECT count(*), count("Session") FROM sales."Orders"', {}),
     ]
 
 
@@ -149,8 +155,8 @@ def test_the_hash_method_passes_the_timeout(calls: list[tuple[object, ...]]) -> 
     planning.plan("dsn", "t", "c", 4, method="hash", statement_timeout_ms=9)
     planning.plan("dsn", "t", "c", 4, method="hash")
     assert calls == [
-        ("plan_from_hash", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9}),
-        ("plan_from_hash", ("dsn", "t", "c", 4), {"statement_timeout_ms": None}),
+        ("plan_from_hash", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9, "where": None}),
+        ("plan_from_hash", ("dsn", "t", "c", 4), {"statement_timeout_ms": None, "where": None}),
     ]
 
 

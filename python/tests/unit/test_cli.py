@@ -340,7 +340,7 @@ def test_verify_plans_then_checks(capsys: pytest.CaptureFixture[str], fake: Fake
             TABLE,
             "customer_id",
             PLAN.predicates,
-            {"counts": False, "statement_timeout_ms": 500},
+            {"counts": False, "statement_timeout_ms": 500, "where": None},
         ),
     ]
 
@@ -369,7 +369,31 @@ def test_verify_with_counts(capsys: pytest.CaptureFixture[str], fake: Fake) -> N
         "skew score: estimated 1.887, actual 1.887",
         "",
     ]
-    assert fake.calls[-1][-1] == {"counts": True, "statement_timeout_ms": None}
+    assert fake.calls[-1][-1] == {"counts": True, "statement_timeout_ms": None, "where": None}
+
+
+WHERE = "created_at >= now() - interval '90 days'"
+
+
+def test_the_filter_reaches_planning_and_the_check(
+    capsys: pytest.CaptureFixture[str], fake: Fake
+) -> None:
+    assert run(capsys, *PLAN_ARGS, "--where", WHERE)[0] == cli.OK
+    assert run(capsys, *STATS_ARGS, "--where", WHERE)[0] == cli.OK
+    assert run(capsys, *VERIFY_ARGS, *FRESH, "--where", WHERE)[0] == cli.OK
+    planned = [call for call in fake.calls if call[0] in {"plan", "distribution"}]
+    assert [call[-1] for call in planned] == [{"where": WHERE}] * 3
+    assert fake.calls[-1][-1] == {"counts": False, "statement_timeout_ms": None, "where": WHERE}
+
+
+def test_verify_with_a_plan_takes_the_filter(
+    capsys: pytest.CaptureFixture[str], fake: Fake, tmp_path: Path
+) -> None:
+    plan_json = run(capsys, *PLAN_ARGS, "--format", "json")[1]
+    path = tmp_path / "plan.json"
+    path.write_text(plan_json, encoding="utf-8")
+    assert run(capsys, *VERIFY_ARGS, "--plan", str(path), "--where", WHERE)[0] == cli.OK
+    assert fake.calls[-1][-1] == {"counts": False, "statement_timeout_ms": None, "where": WHERE}
 
 
 def test_verify_with_counts_of_an_empty_table(
@@ -658,7 +682,7 @@ def test_verify_with_a_plan_takes_the_timeout_for_the_check_only(
     argv = (*VERIFY_ARGS, "--plan", path, "--statement-timeout-ms", "40")
     assert run(capsys, *argv)[0] == cli.OK
     [(_, *verified)] = [call for call in fake.calls if call[0] != "connect"]
-    assert verified[-1] == {"counts": False, "statement_timeout_ms": 40}
+    assert verified[-1] == {"counts": False, "statement_timeout_ms": 40, "where": None}
 
 
 @pytest.mark.parametrize(

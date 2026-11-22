@@ -45,7 +45,13 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         pass
 
-    def execute(self, query: object, params: dict[str, object] | None = None) -> FakeCursor:
+    def execute(
+        self,
+        query: object,
+        params: dict[str, object] | None = None,
+        *,
+        binary: bool = False,  # noqa: ARG002 -- the caller-SQL queries pass True
+    ) -> FakeCursor:
         text = query.as_string(None) if isinstance(query, sql.Composable) else str(query)
         self.conn.queries.append((" ".join(text.split()), params))
         self.result = self.conn.results.pop(0)
@@ -98,7 +104,7 @@ def conn_of(fake: FakeConnection) -> psycopg.Connection[Any]:
     return cast("psycopg.Connection[Any]", fake)
 
 
-def read(column: Column, *results: object, **options: int) -> tuple[FakeConnection, Quantiles]:
+def read(column: Column, *results: object, **options: Any) -> tuple[FakeConnection, Quantiles]:  # noqa: ANN401 -- any of read_quantiles's options
     """Read ``column``; ``results`` answer the queries after the settings."""
     fake = FakeConnection(None, *results)
     return fake, read_quantiles(conn_of(fake), column, **options)
@@ -154,7 +160,7 @@ def test_the_queries_count_find_the_common_values_and_read_the_bounds() -> None:
     )
     assert counts == (
         f"SELECT count(*), count(s.v), count(*) FILTER (WHERE s.v IS NOT NULL) {FROM}",
-        None,
+        {},
     )
     assert common == (
         (
@@ -347,8 +353,8 @@ def test_the_exact_strategy_passes_the_timeout(calls: list[tuple[object, ...]]) 
     planning.plan("dsn", "t", "c", 4, strategy="exact", statement_timeout_ms=9)
     planning.distribution("dsn", "t", "c", strategy="exact")
     assert calls == [
-        ("plan_from_exact", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9}),
-        ("exact_distribution", ("dsn", "t", "c"), {"statement_timeout_ms": None}),
+        ("plan_from_exact", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9, "where": None}),
+        ("exact_distribution", ("dsn", "t", "c"), {"statement_timeout_ms": None, "where": None}),
     ]
 
 

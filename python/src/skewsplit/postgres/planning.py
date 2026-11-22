@@ -43,6 +43,7 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> JSON:
     """Return a column's distribution: the input of spec section 1 without ``partitions``.
 
@@ -67,6 +68,14 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
             same table gives the same sample.
         statement_timeout_ms: A ``statement_timeout`` for each query that
             reads the statistics or the table, in milliseconds.
+        where: A filter for a read of part of the table, such as
+            ``"created_at >= now() - interval '90 days'"`` (spec section 18).
+            The sample, exact and hash queries read only the rows it keeps;
+            the statistics describe the whole table, so with ``statistics``
+            the plan warns ``filter_ignored``, and ``auto`` reads a sample.
+            It is SQL from the caller, run as it is in a read-only
+            transaction: only pass text you trust. Spark's read must apply
+            the same filter, as the README shows.
 
     Raises:
         CatalogError: If the column cannot be split, or has no statistics
@@ -86,10 +95,11 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     if chosen == "exact":
         return exact_distribution(
-            database, table, column, statement_timeout_ms=statement_timeout_ms
+            database, table, column, statement_timeout_ms=statement_timeout_ms, where=where
         )
     if chosen == "sample":
         return sample_distribution(
@@ -100,9 +110,10 @@ def distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI's fla
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     return statistics_distribution(
-        database, table, column, statement_timeout_ms=statement_timeout_ms
+        database, table, column, statement_timeout_ms=statement_timeout_ms, where=where
     )
 
 
@@ -118,6 +129,7 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates for a column.
 
@@ -142,7 +154,12 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
             msg = "strategy, sample_rows, max_sample_rows and seed are for method='range'"
             raise ValueError(msg)
         return plan_from_hash(
-            database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+            database,
+            table,
+            column,
+            partitions,
+            statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     chosen = _strategy(
         "statistics" if strategy is None else strategy, sample_rows, max_sample_rows, seed
@@ -159,10 +176,16 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     if chosen == "exact":
         return plan_from_exact(
-            database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+            database,
+            table,
+            column,
+            partitions,
+            statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     if chosen == "sample":
         return plan_from_sample(
@@ -174,9 +197,10 @@ def plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
             max_sample_rows=max_sample_rows,
             seed=seed,
             statement_timeout_ms=statement_timeout_ms,
+            where=where,
         )
     return plan_from_statistics(
-        database, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+        database, table, column, partitions, statement_timeout_ms=statement_timeout_ms, where=where
     )
 
 

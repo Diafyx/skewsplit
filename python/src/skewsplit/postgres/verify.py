@@ -15,7 +15,14 @@ from psycopg import sql
 from psycopg.rows import tuple_row
 
 from skewsplit.postgres.catalog import find_column
-from skewsplit.postgres.connection import check_timeout, connection, set_timeout
+from skewsplit.postgres.connection import (
+    caller_sql,
+    check_timeout,
+    connection,
+    run,
+    set_timeout,
+    where_clause,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,11 +41,11 @@ SELECT count(*), count(*) FILTER (WHERE matches = 0), count(*) FILTER (WHERE mat
 FROM (
   SELECT pg_catalog.cardinality(pg_catalog.array_positions(ARRAY[{predicates}]::boolean[], true))
          AS matches
-  FROM {table}
+  FROM {table}{where}
 ) AS t
 """
 
-_COUNT: Final = "SELECT count(*) FROM {table} WHERE {predicate}"
+_COUNT: Final = "SELECT count(*) FROM {table} WHERE {predicate}{also}"
 
 
 @dataclass(frozen=True)
@@ -84,6 +91,7 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     *,
     counts: bool = False,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Verification:
     """Check that every row of ``table`` matches exactly one of ``predicates``.
 
@@ -97,6 +105,9 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
         counts: Also count the rows of each predicate, one query each.
         statement_timeout_ms: A ``statement_timeout`` for each query, in
             milliseconds; by default the session's.
+        where: A filter, so only the rows it keeps are checked and counted
+            (spec section 18). Like the predicates, it is SQL from the
+            caller: only pass text you trust.
 
     Raises:
         CatalogError: If the table or column cannot be read.
@@ -110,30 +121,33 @@ def verify(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
         qualified = find_column(conn, table, column, any_type=True).qualified
         # find_column quoted the name with quote_ident.
         target = sql.SQL(qualified)
-        # Each predicate on lines of its own, so a trailing -- comment ends with it.
-        conditions = [sql.SQL("(\n" + text + "\n)") for text in predicates]
+        conditions = [caller_sql(text) for text in predicates]
+        also = sql.SQL("") if where is None else sql.SQL(" AND {}").format(caller_sql(where))
         with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
             cursor.execute(_READ_ONLY)
             set_timeout(cursor, statement_timeout_ms)
-            scan = sql.SQL(_SCAN).format(predicates=sql.SQL(", ").join(conditions), table=target)
+            scan = sql.SQL(_SCAN).format(
+                predicates=sql.SQL(", ").join(conditions), table=target, where=where_clause(where)
+            )
             total, unmatched, overlapping = _one(cursor, scan)
             rows = None
             if counts:
                 count = sql.SQL(_COUNT)
                 rows = tuple(
-                    _one(cursor, count.format(table=target, predicate=condition))[0]
+                    _one(cursor, count.format(table=target, predicate=condition, also=also))[0]
                     for condition in conditions
                 )
     return Verification(qualified, total, unmatched, overlapping, rows)
 
 
-def verify_plan(
+def verify_plan(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     database: str | psycopg.Connection[Any],
     table: str,
     plan: Plan,
     *,
     counts: bool = False,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> dict[str, object]:
     """Verify a plan, and report the actual rows next to the estimates.
 
@@ -147,6 +161,7 @@ def verify_plan(
         plan.predicates,
         counts=counts,
         statement_timeout_ms=statement_timeout_ms,
+        where=where,
     )
     estimates = [(part.sql, part.estimated_rows) for part in plan.parts]
     return verification_report(found, estimates, plan.requested_partitions, plan.skew_score)
@@ -192,7 +207,7 @@ def verification_report(
 
 
 def _one(cursor: psycopg.Cursor[Any], query: sql.Composed) -> tuple[int, ...]:
-    # Binary results make psycopg use the extended query protocol, which runs
-    # exactly one statement, so no predicate can end the query and start another.
-    # An aggregate without GROUP BY always returns one row.
-    return cast("tuple[int, ...]", cursor.execute(query, binary=True).fetchone())
+    # run uses the extended query protocol, which runs exactly one statement,
+    # so no predicate can end the query and start another. An aggregate
+    # without GROUP BY always returns one row.
+    return cast("tuple[int, ...]", run(cursor, query).fetchone())

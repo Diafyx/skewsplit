@@ -164,7 +164,7 @@ API. The planner's input and output are defined in the [spec](spec/SPEC.md).
 | `skewsplit.Plan` | A plan. `predicates` is the list of SQL conditions that `spark.read.jdbc` takes, `report` the skew report as text, and `to_dict()` and `to_json()` the output of spec section 10. `to_pyspark()` and `to_scala()` give code that reads a table with the predicates. `parts` has each predicate with its estimated rows, and `skew_score` and `warnings` are as in the spec |
 | `skewsplit.Predicate`, `skewsplit.Bound`, `skewsplit.PlanWarning` | The parts of a plan |
 | `skewsplit.SpecError` | Invalid input, with the `code` of spec section 9 |
-| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. With `strategy="auto"`, from the statistics when they are fresh and a sample otherwise, or hash predicates for a column ranges cannot split; `source["auto"]` says which and why. With `method="hash"`, hash predicates for a column of any type instead of ranges. `statement_timeout_ms` bounds each query of any strategy |
+| `skewsplit.postgres.plan(conn_or_dsn, table, column, partitions)` | Plans from the column's statistics in `pg_stats`, without scanning the table. With `strategy="sample"`, from a sample of the table instead; `sample_rows`, `max_sample_rows` and `seed` set it up. With `strategy="exact"`, from every row. With `strategy="auto"`, from the statistics when they are fresh and a sample otherwise, or hash predicates for a column ranges cannot split; `source["auto"]` says which and why. With `method="hash"`, hash predicates for a column of any type instead of ranges. `statement_timeout_ms` bounds each query of any strategy, and `where` plans a filtered read |
 | `skewsplit.postgres.distribution(conn_or_dsn, table, column)` | The distribution that `plan` reads, as `skewsplit.plan` takes it. It takes the same options |
 | `skewsplit.postgres.verify(conn_or_dsn, table, column, predicates)` | Scans the table once and returns a `Verification`: `ok` is true if every row matches exactly one predicate |
 | `skewsplit.postgres.verify_plan(conn_or_dsn, table, plan)` | Verifies a plan, and reports each predicate's actual rows next to its estimate |
@@ -183,6 +183,8 @@ skewsplit plan   --table T --column C --partitions N [--method range|hash]
 skewsplit verify --table T (--plan FILE | --column C --partitions N [--method range|hash])
                  [--counts] [--statement-timeout-ms MS] [--format text|json]
 skewsplit stats  --table T --column C [--partitions N]
+
+every command: [--dsn DSN] [--where SQL]
 
 planning options of plan, stats, and verify without --plan:
   [--strategy statistics|sample|exact|auto] [--sample-rows N] [--max-sample-rows N] [--seed N]
@@ -241,6 +243,31 @@ spec section 17 describes, and the report's second line says which and why:
 
 It never chooses `exact`. `--sample-rows`, `--max-sample-rows` and `--seed`
 apply when it reads a sample.
+
+### Filtered reads
+
+To read part of a table, such as the last 90 days, give the filter with
+`--where` (`where=` in Python), as spec section 18 describes. The sample,
+exact and hash strategies then plan for the rows it keeps, and `verify`
+checks only those rows. `pg_stats` describes the whole table, so the
+statistics strategy warns `filter_ignored`, and `auto` reads a sample.
+
+**The filter is SQL from you, and skewsplit runs it as it is.** Pass only text
+you trust, never input from a user of your program. skewsplit runs it in a
+read-only transaction, as one statement, so a `;` cannot start another one.
+That is a guard against mistakes, not against a hostile filter.
+
+Spark's read must apply the same filter:
+
+```python
+where = "created_at >= now() - interval '90 days'"
+plan = postgres.plan(dsn, "public.orders", "customer_id", 16, strategy="sample", where=where)
+predicates = [f"({predicate}) AND ({where})" for predicate in plan.predicates]
+df = spark.read.jdbc(url, "public.orders", predicates=predicates, properties=properties)
+```
+
+Or read from a subquery that applies it, with the plan's predicates unchanged:
+`spark.read.jdbc(url, f"(SELECT * FROM public.orders WHERE {where}) AS t", ...)`.
 
 For a column with the statistics of the quick start, `plan` prints:
 

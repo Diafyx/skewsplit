@@ -39,7 +39,13 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         pass
 
-    def execute(self, query: object, params: dict[str, object] | None = None) -> FakeCursor:
+    def execute(
+        self,
+        query: object,
+        params: dict[str, object] | None = None,
+        *,
+        binary: bool = False,  # noqa: ARG002 -- the caller-SQL queries pass True
+    ) -> FakeCursor:
         text = query.as_string(None) if isinstance(query, sql.Composable) else str(query)
         self.conn.queries.append((text, params))
         self.result = self.conn.results.pop(0)
@@ -232,7 +238,13 @@ def test_the_plan_follows_the_choice_and_says_why(
     assert patched[1] == (
         "sample",
         ("t", "id", 4),
-        {"sample_rows": 50, "max_sample_rows": None, "seed": 3, "statement_timeout_ms": None},
+        {
+            "sample_rows": 50,
+            "max_sample_rows": None,
+            "seed": 3,
+            "statement_timeout_ms": None,
+            "where": None,
+        },
     )
     source: dict[str, Any] = result.source  # type: ignore[assignment]
     assert source["statistics"] == "sample"
@@ -258,7 +270,7 @@ def test_a_hash_choice_plans_hash_predicates(
 ) -> None:
     use(monkeypatch, Choice("hash", "unsupported_type", "hash it"))
     result = plan_auto(conn(), "t", "id", 4, statement_timeout_ms=7)
-    assert patched[1] == ("hash", ("t", "id", 4), {"statement_timeout_ms": 7})
+    assert patched[1] == ("hash", ("t", "id", 4), {"statement_timeout_ms": 7, "where": None})
     assert result.null_rows == 2
 
 
@@ -334,7 +346,7 @@ def test_auto_may_plan_hash_predicates_unless_ranges_are_asked_for(
     planning.plan("dsn", "t", "c", 4, strategy="auto", seed=1)
     planning.plan("dsn", "t", "c", 4, method="range", strategy="auto")
     planning.distribution("dsn", "t", "c", strategy="auto", sample_rows=9)
-    options = {"max_sample_rows": None, "statement_timeout_ms": None}
+    options = {"max_sample_rows": None, "statement_timeout_ms": None, "where": None}
     assert calls == [
         (
             "plan_auto",

@@ -94,9 +94,9 @@ def test_a_column_of_any_type_is_verified() -> None:
     conn = cast("psycopg.Connection[Any]", fake)
     found = verify(conn, QUALIFIED, "id", ['"id" IS NULL', hashed])
     assert found == Verification(QUALIFIED, 10, 0, 0, None)
-    # Without parameters, psycopg sends the % of the predicate as it is.
-    assert hashed in fake.queries[-1][0]
-    assert fake.queries[-1][1] is None
+    # psycopg turns the doubled % back into one, since parameters are passed.
+    assert hashed.replace("%", "%%") in fake.queries[-1][0]
+    assert fake.queries[-1][1:] == ({}, True)
 
 
 def test_one_scan_checks_every_row() -> None:
@@ -122,7 +122,7 @@ def test_one_scan_checks_every_row() -> None:
         '  FROM sales."Orders"\n'
         ") AS t\n"
     )
-    assert (params, binary) == (None, True)
+    assert (params, binary) == ({}, True)
     # find_column's savepoint is kept; the checking transaction is rolled back.
     assert fake.rollbacks == [False, True]
 
@@ -144,7 +144,7 @@ def test_counts_take_one_query_per_predicate() -> None:
     prefix = 'SELECT count(*) FROM sales."Orders" WHERE (\n'
     assert all(query.startswith(prefix) for query, _, _ in counts)
     assert [query[len(prefix) :] for query, _, _ in counts] == [f"{p}\n)" for p in PREDICATES]
-    assert {(params, binary) for _, params, binary in counts} == {(None, True)}
+    assert all((params, binary) == ({}, True) for _, params, binary in counts)
 
 
 def test_a_statement_timeout() -> None:

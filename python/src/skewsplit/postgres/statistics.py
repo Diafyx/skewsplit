@@ -133,6 +133,7 @@ def distribution(
     column: str,
     *,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> JSON:
     """Return a column's distribution, from its ``pg_stats`` statistics.
 
@@ -147,6 +148,9 @@ def distribution(
         column: The column's exact name, not quoted.
         statement_timeout_ms: A ``statement_timeout`` for the queries that
             read the statistics, in milliseconds; by default the session's.
+        where: A filter the read will apply. ``pg_stats`` describes the whole
+            table, so it is not used, and ``source`` warns ``filter_ignored``
+            (spec section 18).
 
     Raises:
         CatalogError: If the column cannot be split or has no statistics.
@@ -155,16 +159,17 @@ def distribution(
     """
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
-        return _distribution(conn, table, column, statement_timeout_ms)
+        return _distribution(conn, table, column, statement_timeout_ms, where)
 
 
-def plan_from_statistics(
+def plan_from_statistics(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     database: str | psycopg.Connection[Any],
     table: str,
     column: str,
     partitions: int,
     *,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates for a column from its ``pg_stats`` statistics.
 
@@ -175,6 +180,7 @@ def plan_from_statistics(
         column: The column's exact name, not quoted.
         partitions: The number of predicates to plan besides the NULL predicate.
         statement_timeout_ms: As for :func:`distribution`.
+        where: As for :func:`distribution`.
 
     Raises:
         CatalogError: If the column cannot be split or has no statistics.
@@ -184,7 +190,7 @@ def plan_from_statistics(
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         start = perf_counter()
-        data = _distribution(conn, table, column, statement_timeout_ms)
+        data = _distribution(conn, table, column, statement_timeout_ms, where)
     result = plan({**data, "partitions": partitions})
     elapsed_ms = (perf_counter() - start) * 1000
     source = cast("JSON", result.source)
@@ -266,12 +272,34 @@ def distribution_from(statistics: Statistics) -> JSON:
     return data
 
 
+def filter_ignored(where: str) -> dict[str, object]:
+    """The warning that ``pg_stats`` cannot see a filter (spec section 18)."""
+    return {
+        "code": "filter_ignored",
+        "where": where,
+        "message": (
+            "pg_stats describes the whole table, so the estimates ignore the filter: the"
+            " predicates still cover every row it keeps, but each can read more or fewer"
+            " rows than its estimate; plan with strategy sample or exact for filtered rows"
+        ),
+    }
+
+
 def _distribution(
-    conn: psycopg.Connection[Any], table: str, column: str, statement_timeout_ms: int | None
+    conn: psycopg.Connection[Any],
+    table: str,
+    column: str,
+    statement_timeout_ms: int | None,
+    where: str | None,
 ) -> JSON:
     found = find_column(conn, table, column)
     statistics = read_statistics(conn, found, statement_timeout_ms=statement_timeout_ms)
-    return distribution_from(statistics)
+    data = distribution_from(statistics)
+    if where is not None:
+        source = cast("JSON", data["source"])
+        warnings = [*cast("list[object]", source["warnings"]), filter_ignored(where)]
+        data["source"] = {**source, "where": where, "warnings": warnings}
+    return data
 
 
 def _no_statistics(column: Column, *, inherited: bool) -> str:

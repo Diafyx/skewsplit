@@ -1,4 +1,4 @@
-"""Open a connection from a DSN, or use one the caller already has, and bound its queries."""
+"""Open a connection, or use the caller's; bound its queries; and run caller SQL safely."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
 
 import psycopg
+from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 # For the transaction in progress only, so the caller's setting comes back.
 _TIMEOUT: Final = "SELECT pg_catalog.set_config('statement_timeout', %(timeout)s, true)"
@@ -45,3 +46,35 @@ def set_timeout(cursor: psycopg.Cursor[Any], statement_timeout_ms: int | None) -
     """Set ``statement_timeout`` for the rest of the transaction, unless it is ``None``."""
     if statement_timeout_ms is not None:
         cursor.execute(_TIMEOUT, {"timeout": str(statement_timeout_ms)})
+
+
+def caller_sql(text: str) -> sql.SQL:
+    """A condition the caller wrote, such as a predicate or a filter, for :func:`run`.
+
+    It goes in parentheses on lines of its own, so a trailing ``--`` comment
+    ends with it, and its ``%`` signs are doubled, because :func:`run` always
+    passes parameters. It is SQL from the caller and is not checked: only run
+    text the caller trusts.
+    """
+    return sql.SQL("(\n" + text.replace("%", "%%") + "\n)")
+
+
+def where_clause(where: str | None) -> sql.SQL | sql.Composed:
+    """`` WHERE`` and the caller's filter, or nothing without one."""
+    return sql.SQL("") if where is None else sql.Composed([sql.SQL(" WHERE "), caller_sql(where)])
+
+
+def run(
+    cursor: psycopg.Cursor[Any],
+    query: sql.SQL | sql.Composed,
+    params: Mapping[str, object] | None = None,
+) -> psycopg.Cursor[Any]:
+    """Execute a query that contains caller SQL, as one statement only.
+
+    Without parameters, psycopg would send a query with the simple protocol,
+    which runs every statement separated by ``;``: a predicate or filter
+    with ``; COMMIT; ...`` could then end the read-only transaction and run
+    more. Binary results make psycopg use the extended protocol, where the
+    server refuses more than one statement.
+    """
+    return cursor.execute(query, params or {}, binary=True)

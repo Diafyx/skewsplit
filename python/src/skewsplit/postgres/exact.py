@@ -17,7 +17,13 @@ from psycopg.rows import tuple_row
 from skewsplit.core.inputs import parse_input
 from skewsplit.core.planner import plan
 from skewsplit.postgres.catalog import find_column
-from skewsplit.postgres.connection import check_timeout, connection, set_timeout
+from skewsplit.postgres.connection import (
+    check_timeout,
+    connection,
+    run,
+    set_timeout,
+    where_clause,
+)
 
 if TYPE_CHECKING:
     import psycopg
@@ -44,11 +50,11 @@ _ORDINARY: Final = {
 _NOT_NULL: Final = "s.v IS NOT NULL"
 _COUNTS: Final = """
 SELECT count(*), count(s.v), count(*) FILTER (WHERE {ordinary})
-FROM (SELECT {column} AS v FROM {table}) AS s
+FROM (SELECT {column} AS v FROM {table}{where}) AS s
 """
 _COMMON: Final = """
 SELECT s.v::text, count(*)
-FROM (SELECT {column} AS v FROM {table}) AS s
+FROM (SELECT {column} AS v FROM {table}{where}) AS s
 WHERE {ordinary}
 GROUP BY s.v
 HAVING count(*) >= %(least)s
@@ -57,7 +63,7 @@ ORDER BY s.v
 _BOUNDS: Final = """
 SELECT count(*),
        (pg_catalog.percentile_disc(%(fractions)s::float8[]) WITHIN GROUP (ORDER BY s.v))::text[]
-FROM (SELECT {column} AS v FROM {table}) AS s
+FROM (SELECT {column} AS v FROM {table}{where}) AS s
 WHERE {ordinary} AND s.v <> ALL (%(common)s::text[]::{values})
 """
 
@@ -75,6 +81,7 @@ class Quantiles:
             as text, in order, with its rows.
         histogram_rows: The rows of the values that are not common.
         bounds: The histogram bounds as text, or empty without a histogram.
+        where: The caller's filter, or ``None``: the rows above are those it keeps.
     """
 
     column: Column
@@ -84,6 +91,7 @@ class Quantiles:
     common: tuple[tuple[str, int], ...]
     histogram_rows: int
     bounds: tuple[str, ...]
+    where: str | None = None
 
     def distribution(self) -> JSON:
         """Return the input of spec section 1 without ``partitions``.
@@ -95,17 +103,20 @@ class Quantiles:
         if self.column.scale is not None:
             data["scale"] = self.column.scale
         histogram = {"bounds": list(self.bounds), "rows": self.histogram_rows}
+        source: dict[str, object] = {
+            "statistics": "exact",
+            "table": self.column.qualified,
+            "rows": self.rows,
+            "unestimated_rows": self.special_rows,
+            "warnings": self.warnings(),
+        }
+        if self.where is not None:
+            source["where"] = self.where
         data.update(
             null_rows=self.null_rows,
             mcv=[{"value": value, "rows": rows} for value, rows in self.common],
             histogram=histogram if self.bounds else None,
-            source={
-                "statistics": "exact",
-                "table": self.column.qualified,
-                "rows": self.rows,
-                "unestimated_rows": self.special_rows,
-                "warnings": self.warnings(),
-            },
+            source=source,
         )
         # The planner checks it again; this catches a bad value for stats too.
         parse_input({**data, "partitions": 1})
@@ -145,7 +156,11 @@ def bound_fractions(rows: int) -> list[float]:
 
 
 def read_quantiles(
-    conn: psycopg.Connection[Any], column: Column, *, statement_timeout_ms: int | None = None
+    conn: psycopg.Connection[Any],
+    column: Column,
+    *,
+    statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Quantiles:
     """Read the rows, the common values and the histogram bounds of a column.
 
@@ -157,6 +172,9 @@ def read_quantiles(
         column: The column, as :func:`find_column` found it.
         statement_timeout_ms: A ``statement_timeout`` for each query, in
             milliseconds; by default the session's.
+        where: A filter, so the counts and bounds are of the rows it keeps
+            (spec section 18). It is SQL from the caller: only pass text you
+            trust.
 
     Raises:
         ValueError: If the timeout is not positive.
@@ -164,6 +182,7 @@ def read_quantiles(
     """
     check_timeout(statement_timeout_ms)
     names = {
+        "where": where_clause(where),
         "column": sql.Identifier(column.name),
         # find_column quoted the name with quote_ident.
         "table": sql.SQL(column.qualified),
@@ -172,10 +191,10 @@ def read_quantiles(
     with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
         cursor.execute(_SETTINGS)
         set_timeout(cursor, statement_timeout_ms)
-        counted = cursor.execute(sql.SQL(_COUNTS).format(**names)).fetchone()
+        counted = run(cursor, sql.SQL(_COUNTS).format(**names)).fetchone()
         rows, non_null, ordinary = cast("tuple[int, int, int]", counted)
         least = {"least": least_common_rows(ordinary)}
-        found = cursor.execute(sql.SQL(_COMMON).format(**names), least).fetchall()
+        found = run(cursor, sql.SQL(_COMMON).format(**names), least).fetchall()
         common = tuple(cast("list[tuple[str, int]]", found))
         rest = ordinary - sum(count for _, count in common)
         histogram_rows, bounds = 0, None
@@ -187,7 +206,7 @@ def read_quantiles(
                 "common": [value for value, _ in common],
             }
             query = sql.SQL(_BOUNDS).format(**names, values=values)
-            histogram = cursor.execute(query, params).fetchone()
+            histogram = run(cursor, query, params).fetchone()
             histogram_rows, bounds = cast("tuple[int, list[str] | None]", histogram)
     return Quantiles(
         column=column,
@@ -198,6 +217,7 @@ def read_quantiles(
         histogram_rows=histogram_rows,
         # NULL when no row is left: they were deleted after they were counted.
         bounds=tuple(bounds or ()),
+        where=where,
     )
 
 
@@ -207,6 +227,7 @@ def exact_distribution(
     column: str,
     *,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> JSON:
     """Return a column's distribution, from every row of the table.
 
@@ -222,17 +243,20 @@ def exact_distribution(
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         found = find_column(conn, table, column)
-        quantiles = read_quantiles(conn, found, statement_timeout_ms=statement_timeout_ms)
+        quantiles = read_quantiles(
+            conn, found, statement_timeout_ms=statement_timeout_ms, where=where
+        )
     return quantiles.distribution()
 
 
-def plan_from_exact(
+def plan_from_exact(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     database: str | psycopg.Connection[Any],
     table: str,
     column: str,
     partitions: int,
     *,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates for a column from every row of the table.
 
@@ -242,7 +266,9 @@ def plan_from_exact(
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         start = perf_counter()
-        data = exact_distribution(conn, table, column, statement_timeout_ms=statement_timeout_ms)
+        data = exact_distribution(
+            conn, table, column, statement_timeout_ms=statement_timeout_ms, where=where
+        )
     result = plan({**data, "partitions": partitions})
     elapsed_ms = (perf_counter() - start) * 1000
     source = cast("JSON", result.source)

@@ -197,6 +197,24 @@ def test_the_auto_strategy(
     assert code == cli.OK
 
 
+def test_a_filtered_read(
+    capsys: pytest.CaptureFixture[str], database: Database, table: str
+) -> None:
+    where = ("--where", "v > 450")
+    argv = ("plan", "--table", table, *PLAN_4, "--strategy", "sample", *where)
+    code, out, err = run(capsys, database, *argv)
+    assert (code, err) == (cli.OK, "")
+    # v is 1 to 900, so 450 rows are above 450, and none is NULL.
+    assert out.startswith("v (int4): 450 estimated rows, 4 of 4 partitions plus one for NULL")
+    code, out, _ = run(capsys, database, "plan", "--table", table, *PLAN_4, *where)
+    assert code == cli.OK
+    assert "warning filter_ignored: pg_stats describes the whole table" in out
+    checked = ("verify", "--table", table, *PLAN_4, "--strategy", "exact", *where, "--counts")
+    code, out, _ = run(capsys, database, *checked)
+    assert code == cli.OK
+    assert out.startswith(f"OK: each of the 450 rows of {table} matches exactly one predicate\n")
+
+
 def test_a_missing_table(capsys: pytest.CaptureFixture[str], database: Database) -> None:
     argv = ("plan", "--table", f"{database.schema}.no_such_table", *PLAN_4)
     code, out, err = run(capsys, database, *argv)

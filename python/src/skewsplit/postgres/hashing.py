@@ -15,7 +15,13 @@ from psycopg.rows import tuple_row
 
 from skewsplit.core.hashing import hash_plan
 from skewsplit.postgres.catalog import find_column
-from skewsplit.postgres.connection import check_timeout, connection, set_timeout
+from skewsplit.postgres.connection import (
+    check_timeout,
+    connection,
+    run,
+    set_timeout,
+    where_clause,
+)
 
 if TYPE_CHECKING:
     import psycopg
@@ -25,16 +31,22 @@ if TYPE_CHECKING:
 
 # For this transaction only: no writes.
 _READ_ONLY: Final = "SELECT pg_catalog.set_config('transaction_read_only', 'on', true)"
-_COUNTS: Final = "SELECT count(*), count({column}) FROM {table}"
+_COUNTS: Final = "SELECT count(*), count({column}) FROM {table}{where}"
 
 
 def count_rows(
-    conn: psycopg.Connection[Any], column: Column, *, statement_timeout_ms: int | None = None
+    conn: psycopg.Connection[Any],
+    column: Column,
+    *,
+    statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> tuple[int, int]:
     """Count the rows of the column's table, and those where the column is not NULL.
 
     The reading transaction is read-only and rolled back, so the caller's
-    settings and transaction are left as they were.
+    settings and transaction are left as they were. With ``where``, only the
+    rows the caller's filter keeps are counted (spec section 18); it is SQL
+    from the caller, so only pass text you trust.
 
     Raises:
         ValueError: If the timeout is not positive.
@@ -43,22 +55,25 @@ def count_rows(
     check_timeout(statement_timeout_ms)
     # find_column quoted the table name with quote_ident.
     query = sql.SQL(_COUNTS).format(
-        column=sql.Identifier(column.name), table=sql.SQL(column.qualified)
+        column=sql.Identifier(column.name),
+        table=sql.SQL(column.qualified),
+        where=where_clause(where),
     )
     with conn.transaction(force_rollback=True), conn.cursor(row_factory=tuple_row) as cursor:
         cursor.execute(_READ_ONLY)
         set_timeout(cursor, statement_timeout_ms)
-        counted = cursor.execute(query).fetchone()
+        counted = run(cursor, query).fetchone()
     return cast("tuple[int, int]", counted)
 
 
-def plan_from_hash(
+def plan_from_hash(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     database: str | psycopg.Connection[Any],
     table: str,
     column: str,
     partitions: int,
     *,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` hash predicates for a column of any type.
 
@@ -69,6 +84,7 @@ def plan_from_hash(
         column: The column's exact name, not quoted.
         partitions: The number of hash predicates besides the NULL predicate.
         statement_timeout_ms: A ``statement_timeout`` for the counting query.
+        where: A filter, so only the rows it keeps are counted.
 
     Raises:
         CatalogError: If the table or column does not exist or cannot be read.
@@ -80,8 +96,12 @@ def plan_from_hash(
     with connection(database) as conn:
         start = perf_counter()
         found = find_column(conn, table, column, any_type=True)
-        rows, non_null = count_rows(conn, found, statement_timeout_ms=statement_timeout_ms)
+        rows, non_null = count_rows(
+            conn, found, statement_timeout_ms=statement_timeout_ms, where=where
+        )
     source: JSON = {"statistics": "count", "table": found.qualified, "rows": rows}
+    if where is not None:
+        source["where"] = where
     counts = {
         "column": found.name,
         "type": found.type_name,

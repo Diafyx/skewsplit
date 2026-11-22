@@ -44,9 +44,12 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         pass
 
-    def execute(self, query: object, params: dict[str, object] | None = None) -> FakeCursor:
+    def execute(
+        self, query: object, params: dict[str, object] | None = None, *, binary: bool = False
+    ) -> FakeCursor:
         text = query.as_string(None) if isinstance(query, sql.Composable) else str(query)
         self.conn.queries.append((text, params))
+        self.conn.binary.append(binary)
         self.result = self.conn.results.pop(0)
         return self
 
@@ -63,6 +66,7 @@ class FakeConnection:
     def __init__(self, *results: object) -> None:
         self.results = list(results)
         self.queries: list[tuple[str, dict[str, object] | None]] = []
+        self.binary: list[bool] = []
         self.rollbacks: list[bool] = []
 
     def cursor(self, *, row_factory: object) -> FakeCursor:
@@ -97,7 +101,7 @@ def conn_of(fake: FakeConnection) -> psycopg.Connection[Any]:
     return cast("psycopg.Connection[Any]", fake)
 
 
-def read(*results: object, **options: int) -> tuple[FakeConnection, Sample]:
+def read(*results: object, **options: Any) -> tuple[FakeConnection, Sample]:  # noqa: ANN401 -- any of read_sample's options
     """Sample COLUMN; ``results`` answer the settings, estimate and sample queries."""
     fake = FakeConnection(None, *results)
     return fake, read_sample(conn_of(fake), COLUMN, **options)
@@ -136,7 +140,10 @@ def test_a_large_table_is_sampled_by_page_with_a_seed() -> None:
         "SELECT pg_catalog.set_config('statement_timeout', %(timeout)s, true)",
         {"timeout": "500"},
     )
-    assert estimate == (f"EXPLAIN (FORMAT JSON) SELECT FROM {QUALIFIED}", None)
+    assert estimate == (f"EXPLAIN (FORMAT JSON) SELECT FROM {QUALIFIED}", {})
+    # The estimate and the sample may hold the caller's filter, so they run as
+    # one statement each, with the extended protocol.
+    assert fake.binary == [False, False, True, True]
     assert " ".join(query[0].split()) == (
         'SELECT s.v::text, count(*) FROM (SELECT "id" AS v FROM sales."Orders"'
         " TABLESAMPLE SYSTEM (%(percent)s) REPEATABLE (%(seed)s) LIMIT %(limit)s) AS s"
@@ -356,8 +363,12 @@ def test_statistics_is_the_default_strategy(calls: list[tuple[object, ...]]) -> 
     planning.plan("dsn", "t", "c", 4, statement_timeout_ms=9)
     planning.distribution("dsn", "t", "c")
     assert calls == [
-        ("plan_from_statistics", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9}),
-        ("statistics_distribution", ("dsn", "t", "c"), {"statement_timeout_ms": None}),
+        ("plan_from_statistics", ("dsn", "t", "c", 4), {"statement_timeout_ms": 9, "where": None}),
+        (
+            "statistics_distribution",
+            ("dsn", "t", "c"),
+            {"statement_timeout_ms": None, "where": None},
+        ),
     ]
 
 
@@ -366,13 +377,19 @@ def test_the_sample_strategy_passes_its_options(calls: list[tuple[object, ...]])
     planning.distribution(
         "dsn", "t", "c", strategy="sample", sample_rows=5, max_sample_rows=6, statement_timeout_ms=7
     )
-    options = {"max_sample_rows": None, "seed": 1, "statement_timeout_ms": None}
+    options = {"max_sample_rows": None, "seed": 1, "statement_timeout_ms": None, "where": None}
     assert calls == [
         ("plan_from_sample", ("dsn", "t", "c", 4), {"sample_rows": 30000, **options}),
         (
             "sample_distribution",
             ("dsn", "t", "c"),
-            {"sample_rows": 5, "max_sample_rows": 6, "seed": None, "statement_timeout_ms": 7},
+            {
+                "sample_rows": 5,
+                "max_sample_rows": 6,
+                "seed": None,
+                "statement_timeout_ms": 7,
+                "where": None,
+            },
         ),
     ]
 

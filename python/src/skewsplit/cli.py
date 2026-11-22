@@ -101,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         )
         sub.add_argument("--dsn", default="", help="libpq connection string or URI")
         sub.add_argument("--table", required=True, help="the table, as SQL names it")
+        sub.add_argument(
+            "--where",
+            metavar="SQL",
+            help="plan or check a filtered read: only the rows this condition keeps."
+            " It is SQL run as it is, in a read-only transaction: pass only text you trust",
+        )
         return sub
 
     plan = command("plan", "Plan predicates from the column's statistics, a sample or every row")
@@ -271,6 +277,7 @@ def _run(args: argparse.Namespace) -> tuple[str, int]:
                 [predicate for predicate, _ in estimates],
                 counts=args.counts,
                 statement_timeout_ms=args.statement_timeout_ms,
+                where=args.where,
             )
     except (SpecError, postgres.CatalogError) as error:
         raise CommandError(INVALID, f"{error.code}: {error.message}") from None
@@ -299,6 +306,8 @@ def _options(args: argparse.Namespace) -> dict[str, Any]:
             options["seed"] = args.seed
     if args.statement_timeout_ms is not None:
         options["statement_timeout_ms"] = args.statement_timeout_ms
+    if args.where is not None:
+        options["where"] = args.where
     return options
 
 

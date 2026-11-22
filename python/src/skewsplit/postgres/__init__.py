@@ -12,7 +12,9 @@ table instead, for when the statistics are missing or out of date. With
 planning time: the queries scan the whole table three times and sort the
 column. With ``method="hash"``, :func:`plan` plans hash predicates instead,
 for a column of any type, such as ``text`` or ``uuid``; no index can serve
-them, so each partition reads the whole table. :func:`verify` scans the
+them, so each partition reads the whole table. ``where=`` plans and checks a
+filtered read; it is SQL from the caller, so pass only text you trust.
+:func:`verify` scans the
 table once, to check that every row matches exactly one predicate. They all
 take a libpq connection string or an open connection, which they leave as it
 was.

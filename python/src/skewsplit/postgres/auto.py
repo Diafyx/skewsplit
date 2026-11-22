@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 Chosen = Literal["statistics", "sample", "hash"]
 Reason = Literal[
     "unsupported_type",
+    "filter_given",
     "statistics_missing",
     "statistics_stale",
     "statistics_unchecked",
@@ -58,9 +59,16 @@ class Choice:
 
 
 def choose(
-    conn: psycopg.Connection[Any], column: Column, *, statement_timeout_ms: int | None = None
+    conn: psycopg.Connection[Any],
+    column: Column,
+    *,
+    statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Choice:
     """Choose the strategy for a column, by the table of spec section 17.
+
+    With ``where``, the read is filtered, and ``pg_stats`` describes the whole
+    table, so a sample of the rows the filter keeps is read instead.
 
     Raises:
         CatalogError: If the statistics cannot be read for another reason
@@ -73,6 +81,13 @@ def choose(
             "unsupported_type",
             f"ranges cannot split {column.type_name}, so hash predicates split it;"
             " each partition reads the whole table",
+        )
+    if where is not None:
+        return Choice(
+            "sample",
+            "filter_given",
+            "the read is filtered, and pg_stats describes the whole table, so a sample"
+            " of the rows the filter keeps is read",
         )
     try:
         statistics = read_statistics(conn, column, statement_timeout_ms=statement_timeout_ms)
@@ -119,6 +134,7 @@ def auto_distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI'
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> JSON:
     """Return a column's distribution from the statistics or a sample, as spec section 17 chooses.
 
@@ -135,7 +151,7 @@ def auto_distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI'
     check_timeout(statement_timeout_ms)
     with connection(database) as conn:
         found = find_column(conn, table, column)
-        choice = choose(conn, found, statement_timeout_ms=statement_timeout_ms)
+        choice = choose(conn, found, statement_timeout_ms=statement_timeout_ms, where=where)
         data = choice.distribution
         if data is None:
             data = sample_distribution(
@@ -146,6 +162,7 @@ def auto_distribution(  # noqa: PLR0913 -- the keyword-only options are the CLI'
                 max_sample_rows=max_sample_rows,
                 seed=seed,
                 statement_timeout_ms=statement_timeout_ms,
+                where=where,
             )
     return {**data, "source": {**cast("JSON", data["source"]), "auto": choice.report()}}
 
@@ -161,6 +178,7 @@ def plan_auto(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     max_sample_rows: int | None = None,
     seed: int | None = None,
     statement_timeout_ms: int | None = None,
+    where: str | None = None,
 ) -> Plan:
     """Plan ``partitions`` predicates with the strategy that spec section 17 chooses.
 
@@ -176,6 +194,8 @@ def plan_auto(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
         max_sample_rows: As for the sample strategy, when a sample is read.
         seed: As for the sample strategy, when a sample is read.
         statement_timeout_ms: A ``statement_timeout`` for each query.
+        where: A filter for the read (spec section 18): a sample or a count
+            of the rows it keeps, never the statistics.
 
     The plan's ``source`` has the ``auto`` field of :meth:`Choice.report`,
     and ``planning_ms`` includes the time spent choosing.
@@ -190,10 +210,15 @@ def plan_auto(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
     with connection(database) as conn:
         start = perf_counter()
         found = find_column(conn, table, column, any_type=hash_allowed)
-        choice = choose(conn, found, statement_timeout_ms=statement_timeout_ms)
+        choice = choose(conn, found, statement_timeout_ms=statement_timeout_ms, where=where)
         if choice.strategy == "hash":
             result = plan_from_hash(
-                conn, table, column, partitions, statement_timeout_ms=statement_timeout_ms
+                conn,
+                table,
+                column,
+                partitions,
+                statement_timeout_ms=statement_timeout_ms,
+                where=where,
             )
         elif choice.distribution is None:
             result = plan_from_sample(
@@ -205,6 +230,7 @@ def plan_auto(  # noqa: PLR0913 -- the keyword-only options are the CLI's flags
                 max_sample_rows=max_sample_rows,
                 seed=seed,
                 statement_timeout_ms=statement_timeout_ms,
+                where=where,
             )
         else:
             result = plan({**choice.distribution, "partitions": partitions})

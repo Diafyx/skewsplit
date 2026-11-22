@@ -45,6 +45,10 @@ hash predicates; every partition then reads the whole table.
 sample when they are missing or out of date, and hash predicates for a column
 that ranges cannot split. `plan.source["auto"]` and the report say which and why.
 
+To plan a filtered read, such as the last 90 days, pass the filter as
+`where=`, and apply the same filter in Spark's read. It is SQL that skewsplit
+runs as it is: pass only text you trust. The main README shows how.
+
 When accuracy matters more than planning time, `strategy="exact"` reads every
 row. It scans the whole table three times and sorts the column, so set
 `statement_timeout_ms` on a large table.

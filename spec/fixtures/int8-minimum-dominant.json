@@ -1,0 +1,92 @@
+{
+  "description": "The int8 minimum -9223372036854775808, a common sentinel, is dominant (600 * 4 >= 1000). Every predicate that compares with it writes it '-9223372036854775808'::int8: written bare, PostgreSQL reads minus 9223372036854775808, a numeric, and the column's index could not serve the comparison. The value fields keep the text form. The segment below the minimum holds no rows but keeps its range, as for any dominant smallest value. The segment above holds the 400 histogram rows in buckets of 100 and gets the other two ranges, split at its target 200 = G(500) - G(minimum). Skew score 600 * 4 / 1000 = 2.4.",
+  "input": {
+    "column": "account_id",
+    "type": "int8",
+    "partitions": 4,
+    "null_rows": 0,
+    "mcv": [
+      {
+        "value": "-9223372036854775808",
+        "rows": 600
+      }
+    ],
+    "histogram": {
+      "bounds": [
+        "1",
+        "250",
+        "500",
+        "750",
+        "1000"
+      ],
+      "rows": 400
+    }
+  },
+  "expected": {
+    "spec_version": "2.0",
+    "column": "account_id",
+    "type": "int8",
+    "requested_partitions": 4,
+    "planned_partitions": 4,
+    "rows": {
+      "total": 1000,
+      "null": 0,
+      "non_null": 1000
+    },
+    "predicates": [
+      {
+        "kind": "null",
+        "sql": "\"account_id\" IS NULL",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "range",
+        "lower": null,
+        "upper": {
+          "op": "<",
+          "value": "-9223372036854775808"
+        },
+        "sql": "\"account_id\" < '-9223372036854775808'::int8",
+        "estimated_rows": 0
+      },
+      {
+        "kind": "value",
+        "value": "-9223372036854775808",
+        "sql": "\"account_id\" = '-9223372036854775808'::int8",
+        "estimated_rows": 600
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">",
+          "value": "-9223372036854775808"
+        },
+        "upper": {
+          "op": "<",
+          "value": "500"
+        },
+        "sql": "\"account_id\" > '-9223372036854775808'::int8 AND \"account_id\" < 500",
+        "estimated_rows": 200
+      },
+      {
+        "kind": "range",
+        "lower": {
+          "op": ">=",
+          "value": "500"
+        },
+        "upper": null,
+        "sql": "\"account_id\" >= 500",
+        "estimated_rows": 200
+      }
+    ],
+    "skew_score": 2.4,
+    "warnings": [
+      {
+        "code": "dominant_value",
+        "value": "-9223372036854775808",
+        "rows": 600
+      }
+    ],
+    "source": null
+  }
+}

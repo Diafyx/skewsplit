@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final, Literal
 if TYPE_CHECKING:
     from skewsplit.core.errors import SpecError
 
-SPEC_VERSION: Final = "1.1"
+SPEC_VERSION: Final = "2.0"
 
 PredicateKind = Literal["null", "value", "range", "hash"]
 WarningCode = Literal[

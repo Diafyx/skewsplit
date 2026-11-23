@@ -13,7 +13,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, Final, NoReturn
 
 from skewsplit import __version__
 from skewsplit.core.errors import SpecError
@@ -60,7 +60,10 @@ exit codes:
 
 
 _VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
-_MAJOR, _MINOR = SPEC_VERSION.split(".")
+_MAJOR, _MINOR = (int(part) for part in SPEC_VERSION.split("."))
+# The highest minor version verify reads for each major version. Plans of 1.x
+# have the same keys as 2.0 plans (spec section 11).
+_READS: Final = {1: 1, _MAJOR: _MINOR}
 
 _PLAN_FORMATS: dict[str, Callable[[Plan], str]] = {
     "text": lambda plan: plan.report,
@@ -319,8 +322,7 @@ def _read_plan(name: str) -> PlanFile:
         _invalid(f"{where} is not a JSON object")
     if not readable(data.get("spec_version")):
         _invalid(
-            f"{where} needs a spec_version from {_MAJOR}.0 to {SPEC_VERSION},"
-            " as `skewsplit plan` writes"
+            f"{where} needs a spec_version from 1.0 to {SPEC_VERSION}, as `skewsplit plan` writes"
         )
     column = data.get("column")
     partitions = _integer(data.get("requested_partitions"))
@@ -348,10 +350,11 @@ def readable(version: object) -> bool:
     """Whether verify reads a plan of this spec version.
 
     That is every version with the same major version and a minor version up
-    to this one's, which only add keys (spec section 11).
+    to this one's, which only add keys, and 1.0 and 1.1, whose plans have the
+    same keys as 2.0 plans (spec section 11).
     """
     match = _VERSION.fullmatch(version) if isinstance(version, str) else None
-    return match is not None and match[1] == _MAJOR and int(match[2]) <= int(_MINOR)
+    return match is not None and int(match[2]) <= _READS.get(int(match[1]), -1)
 
 
 def _load(name: str, where: str) -> object:

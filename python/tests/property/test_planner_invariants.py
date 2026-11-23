@@ -24,6 +24,16 @@ TYPES = ("int2", "int4", "int8", "numeric", "date", "timestamp", "timestamptz")
 INTEGER_TYPES = ("int2", "int4", "int8")
 # Names that need quoting, including a double quote and an SQL keyword.
 COLUMNS = ("c", "customer_id", 'a"b', "Order Id", "select")
+# The int8 minimum is the one integer written with a PostgreSQL cast (spec
+# section 5). SQLite has no :: casts, so the test writes it as SQLite's CAST.
+INT8_MINIMUM = "'-9223372036854775808'::int8"
+
+
+def in_sqlite(predicate_sql: str) -> str:
+    """The predicate in SQLite's dialect."""
+    translated = predicate_sql.replace(INT8_MINIMUM, "CAST('-9223372036854775808' AS INTEGER)")
+    assert "::" not in translated, predicate_sql
+    return translated
 
 
 @st.composite
@@ -116,7 +126,7 @@ def test_the_sql_reads_every_row_exactly_once(data: dict[str, Any], extra: list[
         db.executemany("INSERT INTO t VALUES (?)", [(row,) for row in rows])
         hits: list[int] = []
         for predicate in result.parts:
-            query = f"SELECT rowid FROM t WHERE {predicate.sql}"  # noqa: S608 -- the plan's own SQL
+            query = f"SELECT rowid FROM t WHERE {in_sqlite(predicate.sql)}"  # noqa: S608 -- the plan's own SQL
             hits += [rowid for (rowid,) in db.execute(query)]
     assert sorted(hits) == list(range(1, len(rows) + 1))
 

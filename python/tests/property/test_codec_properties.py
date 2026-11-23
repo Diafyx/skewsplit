@@ -35,7 +35,10 @@ def test_every_ordinal_round_trips_through_text(data: st.DataObject) -> None:
     ordinal = data.draw(st.integers(codec.min_ordinal, codec.max_ordinal))
     text = codec.text(ordinal)
     assert codec.parse(text) == ordinal
-    assert codec.literal(ordinal) in {text, f"'{text}'::{codec.type_name}"}
+    cast = codec.type_name in {"date", "timestamp", "timestamptz"} or (
+        codec.type_name == "int8" and ordinal == INT64[0]
+    )
+    assert codec.literal(ordinal) == (f"'{text}'::{codec.type_name}" if cast else text)
 
 
 @given(st.data())

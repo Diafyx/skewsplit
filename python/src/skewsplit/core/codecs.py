@@ -140,6 +140,16 @@ class IntegerCodec(Codec):
     def _format(self, ordinal: int) -> str:
         return str(ordinal)
 
+    def literal(self, ordinal: int) -> str:
+        """Return the value bare, except the int8 minimum, which is cast.
+
+        PostgreSQL reads ``-9223372036854775808`` as minus 9223372036854775808,
+        which does not fit int8 and so is numeric. A comparison of the column
+        with a numeric cannot use the column's B-tree index (spec section 5).
+        """
+        text = self.text(ordinal)
+        return f"'{text}'::int8" if ordinal == INT64_MIN else text
+
 
 class NumericCodec(Codec):
     """``numeric`` with a declared scale: the ordinal is the value times 10^scale."""

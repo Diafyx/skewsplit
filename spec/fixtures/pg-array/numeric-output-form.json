@@ -6,7 +6,7 @@
     "scale": 2
   },
   "expected": {
-    "spec_version": "1.1",
+    "spec_version": "2.0",
     "values": [
       "1.50",
       "2.25",

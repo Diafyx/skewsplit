@@ -1,6 +1,6 @@
 # skewsplit behaviour spec
 
-Spec version: **1.1**
+Spec version: **2.0**
 
 This is the contract every skewsplit implementation follows. Given the same
 input, every implementation produces the same output, byte for byte in each
@@ -290,6 +290,12 @@ Its upper end is a split point or a dominant value (`<`), or open.
 - The column is written in double quotes, with every `"` inside doubled:
   `customer_id` becomes `"customer_id"`, and `a"b` becomes `"a""b"`.
 - Integers and numerics are written in their text form: `42`, `-5`, `12.50`.
+  The one exception is the `int8` minimum, which is quoted, with a cast:
+  `'-9223372036854775808'::int8`. PostgreSQL reads a leading minus sign as
+  an operator, so `-9223372036854775808` is minus 9223372036854775808. That
+  does not fit `int8`, so it is a `numeric`, and a comparison of an `int8`
+  column with a `numeric` cannot use the column's index. The minimums of
+  `int2` and `int4` fit `int8`, and those comparisons can.
 - Dates and timestamps are quoted, with a cast:
   `'2026-11-18'::date`, `'2026-11-18 15:30:00'::timestamp`,
   `'2026-11-18 15:30:00+00'::timestamptz`.
@@ -445,7 +451,7 @@ A plan is one JSON object. For the input in section 1:
 
 ```json
 {
-  "spec_version": "1.1",
+  "spec_version": "2.0",
   "column": "customer_id",
   "type": "int4",
   "requested_partitions": 4,
@@ -479,7 +485,7 @@ A plan is one JSON object. For the input in section 1:
 - `skew_score` is a JSON number equal to `k / 1000`, or `null`.
 - `source` is the input's `source`, or `null` when the input has none.
 - The order of keys in an object does not matter; the order of arrays does.
-- An error is the object `{"spec_version": "1.1", "error": {"code": ..., "message": ...}}`.
+- An error is the object `{"spec_version": "2.0", "error": {"code": ..., "message": ...}}`.
 
 ## 11. Versioning
 
@@ -492,16 +498,20 @@ follows, and every plan carries it in `spec_version`.
   object keys, such as a new optional input field or a new type. Readers must
   ignore keys they do not know.
 
-**Example.** Supporting a `uuid` column would be a minor change: 1.1 to 1.2.
+**Example.** Supporting a `uuid` column would be a minor change: 2.0 to 2.1.
 Rounding the targets in section 4.3 up instead of down changes existing plans,
-so it would be a major change: 1.1 to 2.0.
+so it would be a major change: 2.0 to 3.0.
 
 A reader of version `X.Y` reads every plan of version `X.Z` with `Z ≤ Y`.
+A reader of any 2.x version also reads plans of 1.0 and 1.1. Those plans
+have the same keys, and their predicates are still correct: only an `int8`
+minimum in `sql` is written differently.
 
 | Version | Change |
 |---------|--------|
 | 1.0 | The first version |
 | 1.1 | [Section 14](#14-distribution-from-a-sample): the input from a sample of the column. [Section 15](#15-exact-quantiles): the input from every row. [Section 16](#16-hash-predicates): hash predicates for columns without a usable order. [Section 17](#17-choosing-a-strategy): choosing a strategy. [Section 18](#18-filtered-reads): filtered reads |
+| 2.0 | [Section 5](#5-predicates): the `int8` minimum is written `'-9223372036854775808'::int8`, so a B-tree index on the column can serve its partition. This changes the `sql` of plans that have that value as a boundary or a dominant value |
 
 The fixtures in `spec/fixtures/` belong to the version in this file. A change
 to the spec changes the fixtures in the same pull request. Once a release

@@ -5,7 +5,7 @@
     "type": "int8"
   },
   "expected": {
-    "spec_version": "1.1",
+    "spec_version": "2.0",
     "values": [
       "42"
     ]

@@ -469,9 +469,10 @@ def predicates_with(**changes: object) -> list[object]:
     ("data", "message"),
     [
         ([], "is not a JSON object"),
-        (plan_with(spec_version="2.0"), "needs a spec_version from 1.0 to 1.1"),
-        (plan_with(spec_version="1.2"), "needs a spec_version from 1.0 to 1.1"),
-        ({"column": "c"}, "needs a spec_version from 1.0 to 1.1"),
+        (plan_with(spec_version="3.0"), "needs a spec_version from 1.0 to 2.0"),
+        (plan_with(spec_version="2.1"), "needs a spec_version from 1.0 to 2.0"),
+        (plan_with(spec_version="1.2"), "needs a spec_version from 1.0 to 2.0"),
+        ({"column": "c"}, "needs a spec_version from 1.0 to 2.0"),
         (plan_with(column=None), "needs a column and requested_partitions"),
         (plan_with(requested_partitions="4"), "needs a column and requested_partitions"),
         (plan_with(requested_partitions=True), "needs a column and requested_partitions"),
@@ -691,8 +692,11 @@ def test_verify_with_a_plan_takes_the_timeout_for_the_check_only(
         ("1.0", True),
         ("1.1", True),
         ("1.2", False),
-        ("2.0", False),
+        ("2.0", True),
+        ("2.1", False),
+        ("3.0", False),
         ("0.9", False),
+        ("0.0", False),
         ("1.01", False),
         ("01.1", False),
         ("1.1 ", False),
@@ -702,15 +706,16 @@ def test_verify_with_a_plan_takes_the_timeout_for_the_check_only(
         (None, False),
     ],
 )
-def test_verify_reads_plans_of_this_major_version_up_to_this_minor(
+def test_verify_reads_plans_of_1_x_and_of_this_major_version_up_to_this_minor(
     version: object, *, readable: bool
 ) -> None:
     assert cli.readable(version) is readable
 
 
 @pytest.mark.usefixtures("fake")
-def test_verify_reads_a_plan_of_spec_version_1_0(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
+@pytest.mark.parametrize("version", ["1.0", "1.1"])
+def test_verify_reads_a_plan_of_spec_version_1(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, version: str
 ) -> None:
-    path = write_plan(tmp_path, plan_with(spec_version="1.0"))
+    path = write_plan(tmp_path, plan_with(spec_version=version))
     assert run(capsys, *VERIFY_ARGS, "--plan", path)[0] == cli.OK

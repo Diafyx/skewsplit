@@ -184,8 +184,8 @@ def test_spec_version_needs_exactly_one_line(count: int) -> None:
 
 def test_a_fixture_for_another_spec_version_is_reported() -> None:
     path = FIXTURES / "error-duplicate-value.json"
-    message = "spec_version must be 2.0, the version in spec/SPEC.md"
-    assert check_fixture(path, "2.0") == [f"{path}: {message}"]
+    message = "spec_version must be 3.0, the version in spec/SPEC.md"
+    assert check_fixture(path, "3.0") == [f"{path}: {message}"]
 
 
 def test_main_reports_problems_and_exits_1(

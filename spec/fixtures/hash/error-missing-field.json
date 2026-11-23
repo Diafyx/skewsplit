@@ -7,7 +7,7 @@
     "null_rows": 10
   },
   "expected": {
-    "spec_version": "1.1",
+    "spec_version": "2.0",
     "error": {
       "code": "invalid_input"
     }

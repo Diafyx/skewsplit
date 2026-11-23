@@ -46,7 +46,7 @@ SECTION_1 = make(
 
 def test_the_example_of_section_10() -> None:
     expected = {
-        "spec_version": "1.1",
+        "spec_version": "2.0",
         "column": "customer_id",
         "type": "int4",
         "requested_partitions": 4,
@@ -306,7 +306,7 @@ def test_invalid_input_raises_spec_error() -> None:
     with pytest.raises(SpecError) as caught:
         plan(make(partitions=0))
     assert error_dict(caught.value) == {
-        "spec_version": "1.1",
+        "spec_version": "2.0",
         "error": {"code": "invalid_partitions", "message": caught.value.message},
     }
 

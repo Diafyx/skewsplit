@@ -21,8 +21,16 @@ Security problems go through [SECURITY.md](SECURITY.md), never a public issue.
 
 ## Setting up
 
-You need [uv](https://docs.astral.sh/uv/) and `make`. Everything else,
-including Python itself, is installed by uv from `uv.lock`.
+You need [uv](https://docs.astral.sh/uv/) and `make`. Everything else for
+Python, including Python itself, is installed by uv from `uv.lock`.
+
+For the Rust crate in `rust/`, you also need [rustup](https://rustup.rs/),
+which installs the toolchain that `rust/rust-toolchain.toml` names, and two
+cargo tools:
+
+```sh
+cargo install cargo-nextest cargo-llvm-cov --locked
+```
 
 ```sh
 git clone https://github.com/Diafyx/skewsplit.git
@@ -32,14 +40,18 @@ make check
 
 | Command | What it runs |
 |---------|--------------|
-| `make check` | Lint, unit and property tests, coverage gates, packaging and docs checks: everything a pull request runs that needs no database |
+| `make check` | Lint, unit and property tests, coverage gates, packaging and docs checks, for Python and Rust: everything a pull request runs that needs no database |
 | `make check-all` | `make check` plus the lowest-dependency test run |
-| `make lint` | ruff, ruff format, mypy, typos, actionlint, zizmor and the filter guard |
+| `make lint` | ruff, ruff format, mypy, typos, actionlint, zizmor, the filter guard, and cargo fmt, clippy and rustdoc |
 | `make py-unit` | Unit and property tests with coverage data |
 | `make PYTHON=3.9 py-unit` | The same on another Python version |
+| `make rust-test` | The crate's tests with cargo-nextest, and its doc tests |
+| `make rust-test RUST_TOOLCHAIN=msrv` | The same with the minimum supported Rust version, once `rustup toolchain install` has installed it |
+| `make rust-coverage` | The crate's coverage gates |
 
 To run the same checks before each commit, install the hooks with
-`uvx pre-commit install`. They use the tool versions pinned in `uv.lock`.
+`uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and
+cargo fmt from the Rust toolchain.
 
 ### Tests that run only in CI
 
@@ -65,8 +77,10 @@ Use a throwaway database all the same.
 |------|-----------|
 | Line and branch coverage of the pure core (`skewsplit.core`) | 100% |
 | Line and branch coverage of the whole package | At least 95% |
+| Line coverage of the Rust library, the core of the crate | 100% |
+| Line coverage of the whole crate | At least 95% |
 | Coverage of the lines your pull request changes (`diff-cover`) | 100% |
-| Warnings | Errors (`filterwarnings = error`) |
+| Warnings | Errors (`filterwarnings = error`, clippy and rustdoc with `-D warnings`) |
 | Types | `mypy --strict`, no errors |
 | Mutation score of the core (nightly) | At least 90% of mutants killed |
 
@@ -76,6 +90,9 @@ Use a throwaway database all the same.
   missing marker. A plain `pytest` runs `unit` and `property`.
 - Test order is random (`pytest-randomly`), so tests must not depend on each
   other.
+- Rust tests live next to the code they test (`#[cfg(test)]` modules) or in
+  `rust/tests/`. Like the Python core, the crate depends on the standard
+  library only.
 - An exclusion from coverage needs a reason on the same line:
   `# pragma: no cover -- only reached on Windows`. A bare `# pragma: no cover`
   excludes nothing.

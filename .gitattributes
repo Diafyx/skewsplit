@@ -5,11 +5,12 @@
 # Generated Markdown (the changelogs release-please writes) is also left out
 # of the Markdown lint and link checks in `make docs`.
 uv.lock linguist-generated=true
-Cargo.lock linguist-generated=true
+rust/Cargo.lock linguist-generated=true
 spec/fixtures/** linguist-generated=true
 **/snapshots/** linguist-generated=true
 **/__snapshots__/** linguist-generated=true
 python/CHANGELOG.md linguist-generated=true
+rust/CHANGELOG.md linguist-generated=true
 bench/RESULTS.md linguist-generated=true
 bench/tasks.svg linguist-generated=true
 bench/baseline.json linguist-generated=true

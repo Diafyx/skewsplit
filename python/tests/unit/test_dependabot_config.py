@@ -70,7 +70,13 @@ UPDATES = parse_updates(TEXT)
 
 
 def test_every_ecosystem_is_configured() -> None:
-    assert [update.ecosystem for update in UPDATES] == ["github-actions", "uv", "pip", "pip"]
+    assert [update.ecosystem for update in UPDATES] == [
+        "github-actions",
+        "uv",
+        "cargo",
+        "pip",
+        "pip",
+    ]
 
 
 def test_an_unreadable_entry_is_an_error() -> None:

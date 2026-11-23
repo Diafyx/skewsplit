@@ -1,0 +1,6 @@
+# The toolchain for every cargo command run in rust/. CI also builds and tests
+# with the minimum supported version, rust-version in Cargo.toml.
+[toolchain]
+channel = "stable"
+components = ["clippy", "rustfmt", "llvm-tools"]
+profile = "minimal"

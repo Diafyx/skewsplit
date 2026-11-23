@@ -1,7 +1,8 @@
-"""Checks that the release-please setup agrees with the package and the PR rules.
+"""Checks that the release-please setup agrees with the packages and the PR rules.
 
-The release pull request changes the manifest, python/pyproject.toml and
-uv.lock together, so CI on that pull request runs these checks too.
+A release pull request changes the manifest and the component's version files
+together (python/pyproject.toml and uv.lock, or rust/Cargo.toml and
+rust/Cargo.lock), so CI on that pull request runs these checks too.
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from pr_hygiene import PullRequest, check, is_exempt_bot
 
@@ -51,9 +54,22 @@ def test_the_manifest_version_is_the_package_version() -> None:
     assert project == locked == [MANIFEST["python"]]
 
 
-def test_the_python_component_is_tagged_python_v() -> None:
-    package = CONFIG["packages"]["python"]
-    assert package["component"] == "python"
+def test_the_crate_version_is_the_manifest_version() -> None:
+    manifest = (REPO / "rust" / "Cargo.toml").read_text(encoding="utf-8")
+    lock = (REPO / "rust" / "Cargo.lock").read_text(encoding="utf-8")
+    package = re.findall(r'^version = "([^"]+)"$', manifest, re.MULTILINE)
+    locked = re.findall(r'^name = "skewsplit"\nversion = "([^"]+)"$', lock, re.MULTILINE)
+    assert package == locked == [MANIFEST["rust"]]
+
+
+@pytest.mark.parametrize(("path", "release_type"), [("python", "python"), ("rust", "rust")])
+def test_each_component_is_named_after_its_folder(path: str, release_type: str) -> None:
+    package = CONFIG["packages"][path]
+    assert package["component"] == path
+    assert package["release-type"] == release_type
+    assert package["package-name"] == "skewsplit"
+    # Relative to the folder: python/CHANGELOG.md and rust/CHANGELOG.md.
+    assert package["changelog-path"] == "CHANGELOG.md"
     assert CONFIG["include-component-in-tag"] is True
     assert "include-v-in-tag" not in CONFIG  # the default, true, gives python-vX.Y.Z
 
@@ -62,18 +78,27 @@ def test_the_title_pattern_has_no_unknown_placeholders() -> None:
     assert "${" not in release_title("python", "0.1.0")
 
 
-def test_the_release_pull_request_passes_pr_hygiene() -> None:
+@pytest.mark.parametrize("component", ["python", "rust"])
+def test_the_release_pull_request_passes_pr_hygiene(component: str) -> None:
     pr = PullRequest(
-        title=release_title("python", "0.1.0"),
-        branch="release-please--branches--main--components--python",
+        title=release_title(component, "0.1.0"),
+        branch=f"release-please--branches--main--components--{component}",
         body="",
         labels=frozenset({*extra_labels(), PENDING_LABEL}),
         milestone=None,
         author_is_bot=True,
     )
-    assert pr.title == "chore(release): release python 0.1.0"
+    assert pr.title == f"chore(release): release {component} 0.1.0"
     assert is_exempt_bot(pr)
     assert check(pr, {}) == []
+
+
+def test_only_a_python_release_starts_the_python_publish_jobs() -> None:
+    workflow = (REPO / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    outputs = re.findall(r"steps\.release\.outputs\['([^']+)'\]", workflow)
+    assert outputs
+    assert all(output.startswith("python--") for output in outputs)
+    assert "releases_created" not in workflow
 
 
 def test_the_release_labels_are_defined() -> None:

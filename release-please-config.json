@@ -21,6 +21,12 @@
           "jsonpath": "$.package[?(@.name.value=='skewsplit')].version"
         }
       ]
+    },
+    "rust": {
+      "release-type": "rust",
+      "package-name": "skewsplit",
+      "component": "rust",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

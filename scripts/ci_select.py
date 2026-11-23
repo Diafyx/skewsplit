@@ -21,19 +21,21 @@ SHARED = frozenset({"spec", "ci", "build"})
 PYTHON = frozenset({"py-core", "py-adapters", "cli"})
 GROUPS = SHARED | PYTHON | {"rust", "bench", "docs", "repo"}
 
-# The groups that select each job, besides the shared ones. `lint` always runs
-# and `pr-size` runs on every pull request. The benchmark helpers in bench/ are
-# unit-tested in py-unit; the benchmark itself runs in bench.yml.
+# The groups that select each job, besides the shared ones. `lint` always runs,
+# and lints the Rust crate too, and `pr-size` runs on every pull request. The
+# benchmark helpers in bench/ are unit-tested in py-unit; the benchmark itself
+# runs in bench.yml. `packaging` builds the Python package and the crate.
 JOBS: dict[str, frozenset[str]] = {
     "py-unit": PYTHON | {"bench"},
     "py-lowest": PYTHON,
     "py-integration": PYTHON,
     "spark-e2e": PYTHON,
     "coverage": PYTHON | {"bench"},
-    "packaging": PYTHON,
+    "packaging": PYTHON | {"rust"},
     "docs": PYTHON | {"docs"},
     "conformance": PYTHON,
     "core-bench": frozenset({"py-core"}),
+    "rust": frozenset({"rust"}),
 }
 # Jobs outside ci-gate: they report and never block, so they are not skips the
 # gate needs to accept.

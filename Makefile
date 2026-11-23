@@ -1,6 +1,7 @@
 # CI calls these same targets, so no test command exists only in YAML.
 #
-#   make check      what a PR runs, minus PostgreSQL and Spark (needs only uv)
+#   make check      what a PR runs, minus PostgreSQL and Spark (needs uv, and
+#                   rustup with cargo-nextest and cargo-llvm-cov)
 #   make check-all  every job that can run locally
 #
 # py-integration, spark-e2e and bench need a PostgreSQL server or Spark with
@@ -28,19 +29,26 @@ MD_FILES = $(shell git ls-files $(MD_PATHSPEC))
 COMPARE ?= origin/main
 # zizmor's online audits need GH_TOKEN; CI clears this to run them.
 ZIZMOR_FLAGS ?= --offline
+# The Rust crate. Its commands run inside rust/, where rustup finds
+# rust-toolchain.toml. RUST_TOOLCHAIN=msrv uses the minimum supported version,
+# rust-version in rust/Cargo.toml, instead.
+RUST_MSRV := $(shell sed -n 's/^rust-version = "\(.*\)"$$/\1/p' rust/Cargo.toml)
+RUST_TOOLCHAIN ?=
+CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
 	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance property mutation links \
-	bench-core bench clean
+	bench-core bench rust-lint rust-test rust-coverage rust-msrv clean
 
-check: lint py-unit coverage packaging docs
+check: lint py-unit coverage rust-test rust-coverage packaging docs
 
 check-all: check py-lowest conformance
 
 # ruff, mypy, spelling, workflow audits, the issue forms and Dependabot config
-# against their schemas, and the golden fixtures. mypy also checks the >>>
-# examples of the docstrings and the Markdown files, written out as modules.
-lint: check-filters check-fixtures
+# against their schemas, the golden fixtures, and the Rust crate. mypy also
+# checks the >>> examples of the docstrings and the Markdown files, written out
+# as modules.
+lint: check-filters check-fixtures rust-lint
 	$(UV_RUN) ruff check
 	$(UV_RUN) ruff format --check
 	$(UV_RUN) mypy
@@ -55,6 +63,39 @@ lint: check-filters check-fixtures
 	$(UV_RUN) check-jsonschema --builtin-schema vendor.github-issue-config \
 		.github/ISSUE_TEMPLATE/config.yml
 	$(UV_RUN) check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
+
+# Formatting, clippy with every warning an error (the lints are in
+# rust/Cargo.toml), and the API docs with broken links as errors.
+rust-lint:
+	$(CARGO) fmt --check
+	$(CARGO) clippy --all-targets --locked -- -D warnings
+	$(CARGO) doc --no-deps --locked
+rust-lint: export RUSTDOCFLAGS := -D warnings
+
+# The tests with cargo-nextest, which writes JUnit XML, then the doc tests,
+# which nextest does not run.
+rust-test:
+	mkdir -p $(REPORTS)
+	$(CARGO) nextest run --locked --profile ci
+	cp rust/target/nextest/ci/junit.xml $(REPORTS)/junit-rust.xml
+	$(CARGO) test --doc --locked
+
+# The A13 gates for the crate, measured with cargo-llvm-cov: 100% of the lines
+# of the library, which is the core (the binary, src/main.rs, is the CLI), at
+# least 95% of the crate's lines, and 100% of the lines changed since
+# $(COMPARE). Stable Rust measures no branch coverage yet. The core gate counts
+# uncovered lines, which must be none: a percentage of a library with no lines
+# yet would be 0 of 0, which cargo-llvm-cov fails.
+rust-coverage:
+	mkdir -p $(REPORTS)
+	$(CARGO) llvm-cov nextest --locked --profile ci --lcov --output-path ../$(REPORTS)/rust.lcov
+	$(CARGO) llvm-cov report --ignore-filename-regex 'src/main\.rs$$' --fail-uncovered-lines 0
+	$(CARGO) llvm-cov report --fail-under-lines 95
+	$(UV_RUN) diff-cover $(REPORTS)/rust.lcov --compare-branch=$(COMPARE) --fail-under=100
+
+# Print the minimum supported Rust version, for CI to install it.
+rust-msrv:
+	@echo $(RUST_MSRV)
 
 # Every tracked file must match a group in .github/filters.yml.
 check-filters:
@@ -98,7 +139,9 @@ coverage:
 	$(UV_RUN) diff-cover $(REPORTS)/coverage.xml --compare-branch=$(COMPARE) --fail-under=100
 
 # Build the sdist and wheel, check their metadata and contents, then install
-# the wheel into a clean environment and run it.
+# the wheel into a clean environment and run it. Then package the crate as
+# crates.io would receive it, list its files, and build it from the package.
+# --allow-dirty lets this run before a commit; publishing never passes it.
 packaging:
 	rm -rf dist .venv-smoke
 	uv build --package skewsplit --out-dir dist
@@ -110,6 +153,8 @@ packaging:
 	.venv-smoke/bin/skewsplit --version
 	.venv-smoke/bin/python -c 'import skewsplit; print(skewsplit.__version__)'
 	rm -rf .venv-smoke
+	$(CARGO) package --locked --allow-dirty --list
+	$(CARGO) package --locked --allow-dirty
 
 # Markdown lint, the >>> examples in every Markdown file (pytest exits 5 when a
 # run finds no examples, which is fine), relative links everywhere, and
@@ -276,4 +321,4 @@ pr-hygiene:
 
 clean:
 	rm -rf dist $(REPORTS) .coverage .coverage.* .venv-smoke $(LOWEST_VENV) $(BENCH_VENV) $(SPARK_VENV) .pgjdbc \
-		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks python/mutants
+		.mypy_cache .pytest_cache .ruff_cache .hypothesis .benchmarks python/mutants rust/target

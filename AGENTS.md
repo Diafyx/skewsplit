@@ -12,7 +12,7 @@ everything there applies to agents too. This file is the short version.
 | `python/src/skewsplit/core/` | The pure planner: standard library only, no I/O |
 | `spec/` | Behaviour spec and golden fixtures shared by every implementation |
 | `bench/` | The Spark benchmark, run in CI by `bench.yml` |
-| `rust/` | Later: the Rust crate |
+| `rust/` | The Rust crate: the library is the core, the binary the CLI. A port in progress |
 | `scripts/` | Repository tooling used by make targets and CI (standard library only) |
 | `docs/adr/` | Architecture decision records |
 
@@ -21,15 +21,19 @@ everything there applies to agents too. This file is the short version.
 ```sh
 make check       # everything a pull request runs that needs no database
 make check-all   # plus the lowest-dependency test run
-make lint        # ruff, ruff format, mypy, typos, actionlint, zizmor, filter guard, fixtures
+make lint        # ruff, ruff format, mypy, typos, actionlint, zizmor, filter guard, fixtures,
+                 # cargo fmt, clippy and rustdoc
 make py-unit     # unit and property tests with coverage data
 make conformance # golden fixtures and spec invariants, more Hypothesis examples
 make mutation    # mutmut on the core (about five minutes; nightly runs it)
+make rust-test   # the crate's tests (cargo-nextest) and doc tests
+make rust-coverage  # the crate's coverage gates (cargo-llvm-cov)
 uv run --frozen pytest python/tests/unit/test_version.py   # one file
 ```
 
 Use `uv run --frozen`, so `uv.lock` never changes by accident. Change
-dependencies only on purpose, with `uv lock`.
+dependencies only on purpose, with `uv lock`. The same goes for Cargo: the make
+targets pass `--locked`.
 
 PostgreSQL and Spark tests (`make py-integration`, `make spark-e2e`) and the
 benchmark (`make bench`) run in CI only. Do not start Docker or install a database to run them.
@@ -43,6 +47,9 @@ benchmark (`make bench`) run in CI only. Do not start Docker or install a databa
 - A coverage exclusion needs a reason: `# pragma: no cover -- <reason>`.
 - Code must run on Python 3.9: use `from __future__ import annotations`, and no
   `match` statements or other syntax newer than 3.9.
+- Rust code must build with the minimum supported version, `rust-version` in
+  `rust/Cargo.toml`. The crate has no dependencies, and clippy's pedantic lints
+  are errors.
 - The package has no runtime dependencies.
 - Tests go in `python/tests/<kind>/` (`unit`, `property`, `integration`,
   `spark`); the folder sets the marker.

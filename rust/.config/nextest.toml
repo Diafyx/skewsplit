@@ -1,0 +1,7 @@
+# cargo-nextest settings. make rust-test runs the ci profile, which runs every
+# test and writes JUnit XML to target/nextest/ci/junit.xml.
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

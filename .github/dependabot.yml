@@ -60,6 +60,24 @@ updates:
       - "type/build"
       - "area/python"
 
+  # The Rust crate's Cargo.lock. The toolchain is the stable channel
+  # (rust/rust-toolchain.toml), so it needs no updates.
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "type/build"
+      - "area/rust"
+
   # PySpark for the benchmark, pinned by hash in bench/requirements.txt. The
   # PostgreSQL JDBC driver is pinned in the Makefile, where Dependabot cannot
   # see it.

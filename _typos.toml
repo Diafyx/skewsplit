@@ -1,6 +1,6 @@
 [files]
 # The changelog is generated from merged pull request titles, which a fix
 # cannot edit after the fact.
-extend-exclude = ["uv.lock", "Cargo.lock", "LICENSE", "python/CHANGELOG.md"]
+extend-exclude = ["uv.lock", "rust/Cargo.lock", "LICENSE", "python/CHANGELOG.md", "rust/CHANGELOG.md"]
 
 [default.extend-words]

@@ -1,5 +1,6 @@
 # Local hooks run the tools pinned in uv.lock, so versions have one source and
-# Dependabot keeps them current. Install with: uvx pre-commit install
+# Dependabot keeps them current; cargo fmt comes with the Rust toolchain.
+# Install with: uvx pre-commit install
 default_install_hook_types: [pre-commit]
 repos:
   - repo: local
@@ -16,6 +17,12 @@ repos:
         language: system
         types_or: [python, pyi]
         require_serial: true
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --manifest-path rust/Cargo.toml --
+        language: system
+        types: [rust]
+        pass_filenames: false
       - id: typos
         name: typos
         entry: uv run --frozen typos --force-exclude
@@ -27,13 +34,13 @@ repos:
         entry: uv run --frozen end-of-file-fixer
         language: system
         types: [text]
-        exclude: ^(uv\.lock|Cargo\.lock)$
+        exclude: ^(uv\.lock|rust/Cargo\.lock)$
       - id: trailing-whitespace
         name: trim trailing whitespace
         entry: uv run --frozen trailing-whitespace-fixer --markdown-linebreak-ext=md
         language: system
         types: [text]
-        exclude: ^(uv\.lock|Cargo\.lock)$
+        exclude: ^(uv\.lock|rust/Cargo\.lock)$
       - id: check-yaml
         name: check yaml
         entry: uv run --frozen check-yaml

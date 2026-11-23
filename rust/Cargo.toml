@@ -1,0 +1,28 @@
+[package]
+name = "skewsplit"
+# release-please sets the version, in this file and in Cargo.lock.
+version = "0.0.0"
+edition = "2024"
+# The minimum supported Rust version: a stable release at least six months old,
+# raised only in a minor release. CI builds and tests with it.
+rust-version = "1.95"
+description = "Balanced, index-friendly JDBC partition predicates for Spark, planned from the column's real distribution."
+readme = "README.md"
+license = "Apache-2.0"
+authors = ["The skewsplit authors"]
+repository = "https://github.com/Diafyx/skewsplit"
+keywords = ["spark", "jdbc", "postgresql", "partitioning", "skew"]
+categories = ["database", "command-line-utilities"]
+# What `cargo package` puts in the crate, and so what crates.io publishes.
+include = ["/src/**/*.rs", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
+# No dependencies: like the Python core, the crate needs only the standard library.
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+# The pedantic group as warnings, which `make rust-lint` turns into errors.
+pedantic = { level = "warn", priority = -1 }

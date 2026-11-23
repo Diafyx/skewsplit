@@ -1,0 +1,21 @@
+//! skewsplit plans balanced JDBC partition predicates for Spark from a
+//! column's distribution.
+//!
+//! This crate is the Rust port of the [Python package], and is not usable
+//! yet. The library will hold the pure core: no I/O and no dependencies. The
+//! command line is the `skewsplit` binary.
+//!
+//! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
+//! repository, and pass the same golden fixtures.
+//!
+//! ```
+//! assert_eq!(skewsplit::SPEC_VERSION, "1.1");
+//! ```
+//!
+//! [Python package]: https://pypi.org/project/skewsplit/
+
+/// The version of this crate.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The version of the behaviour spec this crate follows.
+pub const SPEC_VERSION: &str = "1.1";

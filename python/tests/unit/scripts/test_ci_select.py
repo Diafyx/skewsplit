@@ -21,6 +21,7 @@ ALL_JOBS = {
     "docs",
     "conformance",
     "core-bench",
+    "rust",
 }
 PYTHON_JOBS = {
     "py-unit",
@@ -50,6 +51,15 @@ def test_benchmark_changes_run_the_unit_tests_of_its_helpers() -> None:
         "lint",
         "py-unit",
         "coverage",
+        "pr-size",
+    }
+
+
+def test_rust_changes_run_the_rust_job_and_packaging() -> None:
+    assert running(select("pull_request", {"rust"}, set(), full=False)) == {
+        "lint",
+        "rust",
+        "packaging",
         "pr-size",
     }
 
@@ -106,7 +116,7 @@ def test_main_appends_to_github_output(
     assert main(["--event", "pull_request", "--groups", '["repo"]']) == 0
     written = output.read_text(encoding="utf-8")
     assert written.startswith("earlier=1\nlint=true\n")
-    skips = "py-unit,py-lowest,py-integration,spark-e2e,coverage,packaging,docs,conformance"
+    skips = "py-unit,py-lowest,py-integration,spark-e2e,coverage,packaging,docs,conformance,rust"
     assert f"allowed-skips={skips}\n" in written
     assert capsys.readouterr().out == written.removeprefix("earlier=1\n")
 

@@ -48,6 +48,7 @@ jobs:
       docs: ${{ steps.select.outputs.docs }}
       conformance: ${{ steps.select.outputs.conformance }}
       core-bench: ${{ steps.select.outputs.core-bench }}
+      rust: ${{ steps.select.outputs.rust }}
       allowed-skips: ${{ steps.select.outputs.allowed-skips }}
       spark-matrix: ${{ steps.spark.outputs.spark-matrix }}
     steps:
@@ -99,6 +100,11 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+      # rustup is on every runner. With no name, it installs or updates the
+      # toolchain that rust/rust-toolchain.toml names, with its components.
+      - name: Install Rust
+        working-directory: rust
+        run: rustup toolchain install
       # An empty ZIZMOR_FLAGS turns on zizmor's online audits, which use GH_TOKEN.
       - run: make lint ZIZMOR_FLAGS=
         env:
@@ -384,6 +390,11 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+      # rustup is on every runner. With no name, it installs or updates the
+      # toolchain that rust/rust-toolchain.toml names, with its components.
+      - name: Install Rust
+        working-directory: rust
+        run: rustup toolchain install
       - run: make packaging
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -476,6 +487,79 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The Rust crate on Linux, macOS and Windows, with the toolchain that
+  # rust/rust-toolchain.toml names (stable) and with the minimum supported
+  # version (rust-version in rust/Cargo.toml). The Linux stable leg also checks
+  # the coverage gates.
+  rust:
+    name: rust (${{ matrix.os }}, ${{ matrix.toolchain }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, msrv]
+    env:
+      TOOLCHAIN: ${{ matrix.toolchain }}
+      COVERAGE: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'stable' }}
+      # Incremental builds only help when the same files change again.
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install GNU make
+        if: runner.os == 'Windows'
+        run: choco install make --version=4.4.1 --no-progress --yes
+      # rustup is on every runner. With no name, it installs or updates the
+      # toolchain that rust/rust-toolchain.toml names, with its components.
+      - name: Install Rust
+        working-directory: rust
+        run: rustup toolchain install
+      - name: Install the minimum supported Rust
+        if: matrix.toolchain == 'msrv'
+        run: rustup toolchain install "$(make --no-print-directory rust-msrv)" --profile minimal
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-nextest@0.9.152,cargo-llvm-cov@0.9.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust/target/
+          key: cargo-${{ runner.os }}-${{ matrix.toolchain }}-${{ hashFiles('rust/Cargo.lock') }}
+      - run: make rust-test RUST_TOOLCHAIN="$TOOLCHAIN"
+      - name: Check the coverage gates
+        if: env.COVERAGE == 'true'
+        run: make rust-coverage COMPARE="origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+      - name: Summarise tests
+        if: ${{ !cancelled() }}
+        run: uv run --no-project python scripts/junit_summary.py "rust, $RUNNER_OS, $TOOLCHAIN" reports/junit-rust.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: junit-rust-${{ matrix.os }}-${{ matrix.toolchain }}
+          path: reports/junit-rust.xml
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && env.COVERAGE == 'true' }}
+        with:
+          name: coverage-rust
+          path: reports/rust.lcov
+          retention-days: 14
+
   # Sets exactly one size/* label and fails a size/XXL pull request whose
   # "Why is this PR large?" section is empty.
   pr-size:
@@ -523,7 +607,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, lint, py-unit, py-lowest, py-integration, spark-e2e, coverage, packaging, docs, conformance, pr-size]
+    needs: [changes, lint, py-unit, py-lowest, py-integration, spark-e2e, coverage, packaging, docs, conformance, rust, pr-size]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

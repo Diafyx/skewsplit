@@ -6,8 +6,8 @@ distribution.
 
 > **Status: not usable yet.** So far this crate has the value codecs, which
 > convert values between their text form and the integers the planner works
-> on, and JSON as the Python package reads and writes it. The planner and the
-> command line are being ported from the
+> on, JSON as the Python package reads and writes it, and the planner input
+> checks. The planner and the command line are being ported from the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 

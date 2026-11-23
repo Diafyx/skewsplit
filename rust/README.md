@@ -4,10 +4,10 @@ The Rust port of [skewsplit](https://github.com/Diafyx/skewsplit), which plans
 balanced, index-friendly JDBC partition predicates for Spark from a column's
 distribution.
 
-> **Status: not usable yet.** So far this crate has the value codecs, which
-> convert values between their text form and the integers the planner works
-> on, JSON as the Python package reads and writes it, and the planner input
-> checks. The planner and the command line are being ported from the
+> **Status: not usable yet.** So far this crate has the range planner, which
+> gives byte for byte the plans of the Python package, with the value codecs,
+> the input checks and JSON as Python reads and writes it. The hash planner
+> and the command line are being ported from the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 

@@ -4,8 +4,9 @@ The Rust port of [skewsplit](https://github.com/Diafyx/skewsplit), which plans
 balanced, index-friendly JDBC partition predicates for Spark from a column's
 distribution.
 
-> **Status: not usable yet.** This crate holds the project skeleton. The
-> planner and the command line are being ported from the
+> **Status: not usable yet.** So far this crate has the value codecs, which
+> convert values between their text form and the integers the planner works
+> on. The planner and the command line are being ported from the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 

@@ -3,7 +3,8 @@
 //!
 //! This crate is the Rust port of the [Python package], and is not usable
 //! yet. The library will hold the pure core: no I/O and no dependencies. The
-//! command line is the `skewsplit` binary.
+//! command line is the `skewsplit` binary. So far it has the value codecs,
+//! [`codecs`].
 //!
 //! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
 //! repository, and pass the same golden fixtures.
@@ -13,6 +14,11 @@
 //! ```
 //!
 //! [Python package]: https://pypi.org/project/skewsplit/
+
+pub mod codecs;
+pub mod error;
+
+pub use error::{ErrorCode, SpecError};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

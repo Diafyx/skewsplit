@@ -507,7 +507,7 @@ fn shown(text: &str) -> String {
 /// single quotes, or in double quotes if it has a single quote and no double
 /// one, with backslashes, that quote and control characters escaped. The
 /// wording of messages is not part of the contract (spec section 9).
-fn quoted(text: &str) -> String {
+pub(crate) fn quoted(text: &str) -> String {
     let quote = if text.contains('\'') && !text.contains('"') {
         '"'
     } else {

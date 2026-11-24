@@ -6,8 +6,8 @@ distribution.
 
 > **Status: not usable yet.** So far this crate has the range planner, which
 > gives byte for byte the plans of the Python package, with the value codecs,
-> the input checks and JSON as Python reads and writes it. The hash planner
-> and the command line are being ported from the
+> the input checks, JSON as Python reads and writes it, and PostgreSQL's array
+> text. The hash planner and the command line are being ported from the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 

@@ -5,8 +5,8 @@
 //! yet. The library will hold the pure core: no I/O and no dependencies. The
 //! command line is the `skewsplit` binary. So far it has the value codecs
 //! ([`codecs`]), JSON as Python reads and writes it ([`json`]), the planner
-//! input checks ([`inputs`]), and the planner ([`planner`]) with its plans
-//! ([`plan`]).
+//! input checks ([`inputs`]), the planner ([`planner`]) with its plans
+//! ([`plan`]), and PostgreSQL's array text ([`pgarray`]).
 //!
 //! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
 //! repository, and pass the same golden fixtures.
@@ -21,6 +21,7 @@ pub mod codecs;
 pub mod error;
 pub mod inputs;
 pub mod json;
+pub mod pgarray;
 pub mod plan;
 pub mod planner;
 

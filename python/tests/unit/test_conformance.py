@@ -3,16 +3,23 @@
 The output must equal the fixture's ``expected`` object exactly, apart from
 the ``message`` of warnings and errors, whose wording is not part of the
 contract (spec/README.md).
+
+What ``skewsplit plan`` prints for each planner input of the fixtures, in each
+``--format``, is in rust/tests/cli/python-outputs.json, and the Rust command
+line must print it byte for byte (rust/tests/fixtures.rs). After a change to
+the output, write the file again with ``SKEWSPLIT_WRITE_CLI_OUTPUTS=1``.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable
 
 import pytest
 
+from skewsplit.cli import _PLAN_FORMATS
 from skewsplit.core.codecs import codec_for
 from skewsplit.core.errors import SpecError
 from skewsplit.core.hashing import hash_plan
@@ -32,6 +39,50 @@ PG_ARRAY = sorted((SPEC / "fixtures" / "pg-array").glob("*.json"))
 PG_STATS = sorted((SPEC / "fixtures" / "pg-stats").glob("*.json"))
 SAMPLE = sorted((SPEC / "fixtures" / "sample").glob("*.json"))
 HASH = sorted((SPEC / "fixtures" / "hash").glob("*.json"))
+CLI_OUTPUTS = SPEC.parent / "rust" / "tests" / "cli" / "python-outputs.json"
+
+# The input of spec section 1, and column names that a careless string
+# literal gets wrong, for the command line's output.
+SECTION_1 = {
+    "column": "customer_id",
+    "type": "int4",
+    "partitions": 4,
+    "null_rows": 100,
+    "mcv": [{"value": "7", "rows": 60}, {"value": "42", "rows": 500}],
+    "histogram": {"bounds": ["1", "250", "500", "750", "1000"], "rows": 400},
+}
+AWKWARD_COLUMNS = [
+    'say "hi"',
+    "it's",
+    "'''",
+    "back\\slash\\",
+    "\\u0022 is a quote in Scala 2.12",
+    "new\nline",
+    "carriage\rreturn",
+    "tab\tand\bbackspace\fform feed",
+    "\x01\x1f\x7f\x85 controls",
+    "\u00a0\u2028\u2029\u3000 spaces and separators",
+    "\u00ad\u200b\u202e\u2066\ufeff format characters",
+    "\ue000\U000f0000 private use",
+    "ü, 😀 and \U000e0001",
+    "$dollar ${x} %s {}",
+    # The first and last character of each range that the crate's table of
+    # characters repr escapes holds, apart from NUL, which no column holds.
+    # Each is not printable in every Python, assigned there or not.
+    "ends "
+    + "".join(
+        map(
+            chr,
+            [
+                *(0x01, 0x1F, 0x7F, 0x9F, 0xA0, 0xAD, 0x600, 0x605, 0x61C, 0x6DD, 0x70F),
+                *(0x890, 0x891, 0x8E2, 0x1680, 0x180E, 0x2000, 0x200F, 0x2028, 0x202F),
+                *(0x205F, 0x2064, 0x2066, 0x206F, 0x3000, 0xE000, 0xF8FF, 0xFEFF, 0xFFF9),
+                *(0xFFFB, 0x110BD, 0x110CD, 0x13430, 0x1343F, 0x1BCA0, 0x1BCA3, 0x1D173),
+                *(0x1D17A, 0xE0001, 0xE0020, 0xE007F, 0xF0000, 0xFFFFD, 0x100000, 0x10FFFD),
+            ],
+        )
+    ),
+]
 
 
 def run(data: object, planner: Callable[[object], Plan] = plan) -> dict[str, Any]:
@@ -78,6 +129,51 @@ def without_messages(out: dict[str, Any]) -> dict[str, Any]:
         assert isinstance(message, str)
         assert message
     return out
+
+
+def cli_outputs() -> dict[str, Any]:
+    """What ``skewsplit plan`` prints for each planner input, without the last line break.
+
+    The inputs are those of the planner fixtures, the planner inputs that the
+    statistics and sample fixtures expect, and the input of spec section 1
+    with each of ``AWKWARD_COLUMNS``. For an input that cannot be planned, the
+    case has the error line after ``skewsplit: `` instead.
+    """
+    inputs = [
+        (path.name, json.loads(path.read_text(encoding="utf-8"))["input"]) for path in FIXTURES
+    ]
+    for folder, paths in (("pg-stats", PG_STATS), ("sample", SAMPLE)):
+        for path in paths:
+            expected = json.loads(path.read_text(encoding="utf-8"))["expected"]
+            if "input" in expected:
+                inputs.append((f"{folder}/{path.name}", expected["input"]))
+    for number, column in enumerate(AWKWARD_COLUMNS, 1):
+        inputs.append((f"section-1-column-{number}", {**SECTION_1, "column": column}))
+    # A source as postgres.plan writes it for auto (spec section 17), with
+    # the time in milliseconds as a float and as an integer.
+    auto = {"strategy": "sample", "message": "the statistics are older than the table's changes"}
+    for name, planning_ms in (("float", 12.3456), ("integer", 12)):
+        source = {"auto": auto, "sample_rows": 30000, "planning_ms": planning_ms}
+        inputs.append((f"section-1-auto-{name}", {**SECTION_1, "source": source}))
+    cases = []
+    for name, data in inputs:
+        case: dict[str, Any] = {"name": name, "input": data}
+        try:
+            result = plan(data)
+        except SpecError as error:
+            case["error"] = f"{error.code}: {error.message}"
+        else:
+            case.update({form: render(result) for form, render in _PLAN_FORMATS.items()})
+        cases.append(case)
+    return {"cases": cases}
+
+
+def test_the_command_line_outputs_for_rust_are_up_to_date() -> None:
+    text = json.dumps(cli_outputs(), indent=2) + "\n"
+    if os.environ.get("SKEWSPLIT_WRITE_CLI_OUTPUTS") == "1":
+        CLI_OUTPUTS.write_text(text, encoding="utf-8")
+    message = f"write {CLI_OUTPUTS.name} again with SKEWSPLIT_WRITE_CLI_OUTPUTS=1"
+    assert CLI_OUTPUTS.read_text(encoding="utf-8") == text, message
 
 
 def test_there_are_fixtures() -> None:

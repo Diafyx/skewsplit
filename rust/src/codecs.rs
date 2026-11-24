@@ -503,10 +503,65 @@ fn shown(text: &str) -> String {
     }
 }
 
-/// Quote text as Python's `repr` does for the text people usually write: in
-/// single quotes, or in double quotes if it has a single quote and no double
-/// one, with backslashes, that quote and control characters escaped. The
-/// wording of messages is not part of the contract (spec section 9).
+/// The characters that Python's `str.isprintable` calls not printable, as of
+/// Unicode 17.0, apart from the unassigned ones: the control (Cc) and format
+/// (Cf) characters, the separators (Zs, Zl, Zp) other than the space, and the
+/// private-use characters (Co). Sorted, as ranges that include both ends.
+const NOT_PRINTABLE: [(u32, u32); 29] = [
+    (0x0000, 0x001f),
+    (0x007f, 0x009f),
+    (0x00a0, 0x00a0),
+    (0x00ad, 0x00ad),
+    (0x0600, 0x0605),
+    (0x061c, 0x061c),
+    (0x06dd, 0x06dd),
+    (0x070f, 0x070f),
+    (0x0890, 0x0891),
+    (0x08e2, 0x08e2),
+    (0x1680, 0x1680),
+    (0x180e, 0x180e),
+    (0x2000, 0x200f),
+    (0x2028, 0x202f),
+    (0x205f, 0x2064),
+    (0x2066, 0x206f),
+    (0x3000, 0x3000),
+    (0xe000, 0xf8ff),
+    (0xfeff, 0xfeff),
+    (0xfff9, 0xfffb),
+    (0x110bd, 0x110bd),
+    (0x110cd, 0x110cd),
+    (0x13430, 0x1343f),
+    (0x1bca0, 0x1bca3),
+    (0x1d173, 0x1d17a),
+    (0xe0001, 0xe0001),
+    (0xe0020, 0xe007f),
+    (0xf0000, 0xffffd),
+    (0x10_0000, 0x10_fffd),
+];
+
+/// Whether Python's `str.isprintable` calls a character printable. A
+/// character that is not assigned yet counts as printable here, though
+/// Python says it is not: which characters are assigned depends on the
+/// Unicode version of each Python release.
+pub(crate) fn printable(char: char) -> bool {
+    let code = u32::from(char);
+    NOT_PRINTABLE
+        .binary_search_by(|&(low, high)| {
+            if high < code {
+                std::cmp::Ordering::Less
+            } else if low > code {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_err()
+}
+
+/// Quote text as Python's `repr` does: in single quotes, or in double quotes
+/// if it has a single quote and no double one, with backslashes and that
+/// quote escaped, and each character that is not [`printable`] as `\t`,
+/// `\n`, `\r`, `\xhh`, `\uhhhh` or `\Uhhhhhhhh`.
 pub(crate) fn quoted(text: &str) -> String {
     let quote = if text.contains('\'') && !text.contains('"') {
         '"'
@@ -525,9 +580,13 @@ pub(crate) fn quoted(text: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            char if char.is_control() => {
+            char if !printable(char) => {
                 // Writing to a String cannot fail, so the Result is always Ok.
-                let _ = write!(out, "\\x{:02x}", u32::from(char));
+                let _ = match u32::from(char) {
+                    code @ ..0x100 => write!(out, "\\x{code:02x}"),
+                    code @ ..0x1_0000 => write!(out, "\\u{code:04x}"),
+                    code => write!(out, "\\U{code:08x}"),
+                };
             }
             char => out.push(char),
         }

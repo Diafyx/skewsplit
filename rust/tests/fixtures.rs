@@ -1,5 +1,7 @@
 //! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
-//! and every array text fixture in `spec/fixtures/pg-array/` (section 12).
+//! every array text fixture in `spec/fixtures/pg-array/` (section 12), and
+//! the plan of each planner input of the fixtures printed in each format of
+//! the command line, as the Python command line prints it.
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
 //! these tests.
 //!
@@ -196,5 +198,55 @@ fn every_array_text_fixture_reads_byte_for_byte() {
     assert!(
         arrays >= 10 && errors >= 15,
         "{arrays} arrays, {errors} errors"
+    );
+}
+
+/// What the Python command line prints for a plan in each `--format`.
+fn printed(result: &skewsplit::plan::Plan, format: &str) -> String {
+    match format {
+        "text" => result.report(),
+        "json" => result.to_json(Some(2)).unwrap(),
+        "pyspark" => result.to_pyspark(),
+        "scala" => result.to_scala(),
+        _ => unreachable!("{format} is not a format"),
+    }
+}
+
+/// `tests/cli/python-outputs.json` has what the Python command line prints
+/// for each planner input of the fixtures, in each `--format`, and
+/// `test_conformance.py` checks that it is up to date. The crate must give
+/// the same, byte for byte, or the same error line.
+#[test]
+fn every_plan_is_printed_as_python_prints_it() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cli/python-outputs.json");
+    let file = json::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let cases = file.get("cases").and_then(Value::as_array).unwrap();
+    let names: Vec<&str> = cases
+        .iter()
+        .map(|case| case.get("name").and_then(Value::as_str).unwrap())
+        .collect();
+    for fixture in fixtures("") {
+        assert!(names.contains(&fixture.name.as_str()), "{}", fixture.name);
+    }
+    let (mut plans, mut errors) = (0, 0);
+    for (case, name) in cases.iter().zip(names) {
+        match plan(case.get("input").unwrap()) {
+            Ok(result) => {
+                plans += 1;
+                for format in ["text", "json", "pyspark", "scala"] {
+                    let expected = case.get(format).and_then(Value::as_str).unwrap();
+                    assert_eq!(printed(&result, format), expected, "{name} {format}");
+                }
+            }
+            Err(error) => {
+                errors += 1;
+                let expected = case.get("error").and_then(Value::as_str).unwrap();
+                assert_eq!(format!("{}: {error}", error.code()), expected, "{name}");
+            }
+        }
+    }
+    assert!(
+        plans >= 50 && errors >= 20,
+        "{plans} plans, {errors} errors"
     );
 }

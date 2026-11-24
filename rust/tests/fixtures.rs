@@ -1,4 +1,5 @@
-//! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10).
+//! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
+//! and every array text fixture in `spec/fixtures/pg-array/` (section 12).
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
 //! these tests.
 //!
@@ -9,7 +10,11 @@
 
 use std::path::{Path, PathBuf};
 
-use skewsplit::json::{self, Value};
+use skewsplit::SPEC_VERSION;
+use skewsplit::codecs::codec_for;
+use skewsplit::error::SpecError;
+use skewsplit::json::{self, Object, Value};
+use skewsplit::pgarray::parse_values;
 use skewsplit::plan::error_value;
 use skewsplit::planner::plan;
 
@@ -19,13 +24,15 @@ struct Fixture {
     expected: Value,
 }
 
+/// The fixture folders this file runs, besides the planner fixtures at the top.
+const RUN: [&str; 1] = ["pg-array"];
+
 /// The fixture folders this crate doesn't run yet, because it hasn't ported
 /// what they test. A new folder fails
 /// `every_fixture_folder_is_run_or_not_ported_yet` until it is run here or
 /// listed.
-const NOT_PORTED_YET: [&str; 4] = [
+const NOT_PORTED_YET: [&str; 3] = [
     "hash",     // the hash planner, spec section 16
-    "pg-array", // reading array text, spec section 12: #36
     "pg-stats", // converting pg_stats, spec section 13
     "sample",   // converting a sample, spec section 14
 ];
@@ -34,8 +41,9 @@ fn fixture_folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/fixtures")
 }
 
-fn fixtures() -> Vec<Fixture> {
-    let mut paths: Vec<_> = std::fs::read_dir(fixture_folder())
+/// The fixtures in a folder of `spec/fixtures/`, or at its top for `""`.
+fn fixtures(folder: &str) -> Vec<Fixture> {
+    let mut paths: Vec<_> = std::fs::read_dir(fixture_folder().join(folder))
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .filter(|path| {
@@ -94,7 +102,7 @@ fn check_message(message: Option<&Value>) {
 
 #[test]
 fn every_fixture_plans_byte_for_byte() {
-    let fixtures = fixtures();
+    let fixtures = fixtures("");
     assert!(fixtures.len() >= 40);
     let (mut plans, mut errors) = (0, 0);
     for fixture in fixtures {
@@ -133,5 +141,60 @@ fn every_fixture_folder_is_run_or_not_ported_yet() {
         .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
     folders.sort();
-    assert_eq!(folders, NOT_PORTED_YET);
+    let mut known: Vec<&str> = RUN.iter().chain(&NOT_PORTED_YET).copied().collect();
+    known.sort_unstable();
+    assert_eq!(folders, known);
+}
+
+/// Read the text of a fixture's input as values of its type: the result of
+/// spec section 12 as `{"spec_version": ..., "values": [...]}`, or an error.
+fn read_array(input: &Value) -> Value {
+    let read = || -> Result<Vec<String>, SpecError> {
+        let type_name = input.get("type").and_then(Value::as_str).unwrap();
+        let scale = input
+            .get("scale")
+            .and_then(Value::as_i128)
+            .map(|scale| i64::try_from(scale).unwrap());
+        let text = input.get("text").and_then(Value::as_str).unwrap();
+        parse_values(text, &codec_for(type_name, scale)?)
+    };
+    match read() {
+        Ok(values) => {
+            let mut out = Object::new();
+            out.insert("spec_version", Value::from(SPEC_VERSION));
+            out.insert(
+                "values",
+                Value::Array(values.into_iter().map(Value::from).collect()),
+            );
+            Value::Object(out)
+        }
+        Err(error) => error_value(&error),
+    }
+}
+
+#[test]
+fn every_array_text_fixture_reads_byte_for_byte() {
+    let fixtures = fixtures("pg-array");
+    assert!(fixtures.len() >= 30);
+    let (mut arrays, mut errors) = (0, 0);
+    for fixture in fixtures {
+        let actual = without_messages(read_array(&fixture.input));
+        if actual.get("error").is_some() {
+            errors += 1;
+        } else {
+            arrays += 1;
+        }
+        for indent in [None, Some(2)] {
+            assert_eq!(
+                actual.to_json(indent).unwrap(),
+                fixture.expected.to_json(indent).unwrap(),
+                "{}",
+                fixture.name
+            );
+        }
+    }
+    assert!(
+        arrays >= 10 && errors >= 15,
+        "{arrays} arrays, {errors} errors"
+    );
 }

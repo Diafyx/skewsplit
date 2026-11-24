@@ -1,6 +1,7 @@
 //! Invariants of every plan (spec sections 4 to 8) on random valid inputs, as
 //! `python/tests/property/test_planner_invariants.py` checks them with
-//! Hypothesis.
+//! Hypothesis, and of reading array text (spec section 12), as
+//! `python/tests/property/test_pgarray_properties.py` does.
 //!
 //! `PROPTEST_PROFILE` sets the number of cases of each test, as
 //! `HYPOTHESIS_PROFILE` sets the examples for Python: `dev` (the default) 100,
@@ -19,7 +20,9 @@ use proptest::prelude::*;
 use proptest::sample::{Index, select};
 use proptest::test_runner::FileFailurePersistence;
 use skewsplit::codecs::{Codec, codec_for};
+use skewsplit::error::ErrorCode;
 use skewsplit::json::{Object, Value};
+use skewsplit::pgarray::{parse_array, parse_values};
 use skewsplit::plan::{Kind, Op, Plan, Predicate, WarningCode};
 use skewsplit::planner::plan;
 
@@ -395,5 +398,132 @@ proptest! {
         }
         let shuffled = plan(&case.with_mcv(mcv)).unwrap();
         prop_assert_eq!(shuffled.to_value(), case.plan().to_value());
+    }
+}
+
+// Array text (spec section 12).
+
+/// The characters PostgreSQL quotes an element for.
+const SPECIAL: [char; 11] = [
+    '{', '}', ',', '"', '\\', ' ', '\t', '\n', '\r', '\x0b', '\x0c',
+];
+const ARRAY_TYPES: [(&str, Option<i64>); 8] = [
+    ("int2", None),
+    ("int4", None),
+    ("int8", None),
+    ("numeric", Some(2)),
+    ("numeric", Some(0)),
+    ("date", None),
+    ("timestamp", None),
+    ("timestamptz", None),
+];
+const MAX_ITEMS: usize = 20;
+/// The characters that matter, so that random text often gets past the first
+/// check.
+const NEAR_ARRAYS: [char; 21] = [
+    '{', '}', '[', ']', ':', '=', ',', '"', '\\', ' ', '-', '0', '1', 'N', 'U', 'L', 'n', 'u', 'l',
+    '\t', 'x',
+];
+
+/// How PostgreSQL prints an element (`array_out` in
+/// `src/backend/utils/adt/arrayfuncs.c`): quoted if it is empty, is NULL in
+/// any ASCII case, or holds a special character, with `"` and `\` escaped.
+fn quote(item: Option<&str>) -> String {
+    let Some(item) = item else {
+        return "NULL".to_owned();
+    };
+    if item.is_empty() || item.eq_ignore_ascii_case("NULL") || item.contains(SPECIAL) {
+        format!("\"{}\"", item.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        item.to_owned()
+    }
+}
+
+/// How PostgreSQL prints an array, with the `[L:U]=` prefix when the lower
+/// bound is not 1.
+fn array_out(items: &[Option<String>], lower: i64) -> String {
+    let prefix = if lower != 1 && !items.is_empty() {
+        let count = i64::try_from(items.len()).unwrap();
+        format!("[{lower}:{}]=", lower + count - 1)
+    } else {
+        String::new()
+    };
+    let items: Vec<String> = items.iter().map(|item| quote(item.as_deref())).collect();
+    format!("{prefix}{{{}}}", items.join(","))
+}
+
+fn texts() -> impl Strategy<Value = String> {
+    prop_oneof![
+        any::<String>(),
+        vec(select(NEAR_ARRAYS.to_vec()), 0..=30).prop_map(String::from_iter),
+    ]
+}
+
+/// Lower bounds that leave room for `MAX_ITEMS` elements below the int4
+/// maximum.
+fn lowers() -> impl Strategy<Value = i64> {
+    i64::from(i32::MIN)..=i64::from(i32::MAX) - 20
+}
+
+fn array_codec(index: Index) -> Codec {
+    let (type_name, scale) = ARRAY_TYPES[index.index(ARRAY_TYPES.len())];
+    codec_for(type_name, scale).unwrap()
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn printed_arrays_read_back(
+        items in vec(proptest::option::of(any::<String>()), 0..=MAX_ITEMS),
+        lower in lowers(),
+    ) {
+        prop_assert_eq!(parse_array(&array_out(&items, lower)).unwrap(), items);
+    }
+
+    #[test]
+    fn any_text_reads_or_is_invalid_array(text in texts()) {
+        if let Err(error) = parse_array(&text) {
+            prop_assert_eq!(error.code(), ErrorCode::InvalidArray);
+        }
+    }
+
+    #[test]
+    fn printed_values_read_back_in_output_form(
+        index in any::<Index>(),
+        fractions in vec(any::<u128>(), 0..=MAX_ITEMS),
+        lower in lowers(),
+    ) {
+        let codec = array_codec(index);
+        let (min, max) = (codec.min_ordinal(), codec.max_ordinal());
+        // Every type's range has fewer than 2^65 ordinals, so it fits a u128.
+        let span = u128::try_from(max - min).unwrap() + 1;
+        let texts: Vec<String> = fractions
+            .iter()
+            .map(|fraction| codec.text(min + i128::try_from(fraction % span).unwrap()).unwrap())
+            .collect();
+        let items: Vec<Option<String>> = texts.iter().cloned().map(Some).collect();
+        prop_assert_eq!(parse_values(&array_out(&items, lower), &codec).unwrap(), texts);
+    }
+
+    #[test]
+    fn any_text_gives_values_or_a_spec_error(index in any::<Index>(), text in texts()) {
+        let codec = array_codec(index);
+        match parse_values(&text, &codec) {
+            Ok(values) => {
+                for value in values {
+                    let again = codec.text(codec.parse(&value).unwrap()).unwrap();
+                    prop_assert_eq!(again, value);
+                }
+            }
+            Err(error) => prop_assert!(
+                matches!(
+                    error.code(),
+                    ErrorCode::InvalidArray | ErrorCode::InvalidValue | ErrorCode::ValueOutOfRange
+                ),
+                "{:?}",
+                error
+            ),
+        }
     }
 }

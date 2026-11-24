@@ -19,6 +19,11 @@ include = ["/src/**/*.rs", "/README.md", "/CHANGELOG.md", "/LICENSE"]
 # No dependencies: like the Python core, the crate needs only the standard library.
 [dependencies]
 
+# Only the tests use these, as the Python tests use Hypothesis: the property
+# tests in tests/properties.rs. The crate and its users never build them.
+[dev-dependencies]
+proptest = { version = "1.12", default-features = false, features = ["std"] }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"

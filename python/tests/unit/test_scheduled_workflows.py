@@ -24,7 +24,17 @@ class Scheduled(NamedTuple):
 SCHEDULED = [
     Scheduled(
         "nightly.yml",
-        {"ci", "hypothesis", "fuzz", "mutation", "mutation-issue", "bench", "bench-issue", "links"},
+        {
+            "ci",
+            "hypothesis",
+            "fuzz",
+            "rust-fuzz",
+            "mutation",
+            "mutation-issue",
+            "bench",
+            "bench-issue",
+            "links",
+        },
         {
             "mutation-issue": ["type/test", "area/core", "status/triage"],
             "bench-issue": ["type/perf", "area/bench", "status/triage"],

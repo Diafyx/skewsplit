@@ -60,10 +60,13 @@ updates:
       - "type/build"
       - "area/python"
 
-  # The Rust crate's Cargo.lock. The toolchain is the stable channel
-  # (rust/rust-toolchain.toml), so it needs no updates.
+  # The Rust crate's Cargo.lock, and its fuzz targets' in rust/fuzz. The
+  # toolchain is the stable channel (rust/rust-toolchain.toml), so it needs no
+  # updates.
   - package-ecosystem: "cargo"
-    directory: "/rust"
+    directories:
+      - "/rust"
+      - "/rust/fuzz"
     schedule:
       interval: "weekly"
     cooldown:

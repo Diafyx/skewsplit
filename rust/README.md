@@ -41,6 +41,19 @@ The property tests in `tests/properties.rs` run 100 cases each. Set
 A failing case is shrunk and printed, and its seed is saved in
 `tests/properties.proptest-regressions`, to commit with the fix.
 
+The array text reader has a fuzz target in `fuzz/`, a crate of its own that
+`make rust-lint` checks. Running it needs Rust nightly and
+[cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
+
+```sh
+rustup toolchain install nightly --profile minimal
+cargo install cargo-fuzz --locked
+make rust-fuzz FUZZ_SECONDS=60   # from the repository root
+```
+
+A crashing input is saved in `fuzz/artifacts/pg_array/`. The nightly workflow
+fuzzes for 10 minutes and uploads any crash.
+
 ## License
 
 Apache-2.0

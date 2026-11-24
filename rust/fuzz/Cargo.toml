@@ -1,0 +1,30 @@
+[package]
+name = "skewsplit-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "cargo-fuzz targets for the skewsplit crate."
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# libFuzzer is a dependency of the fuzz targets only: the skewsplit crate
+# itself still has none.
+[dependencies]
+libfuzzer-sys = "0.4.13"
+skewsplit = { path = ".." }
+
+# A workspace of its own, so the crate's Cargo.toml needs none.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "pg_array"
+path = "fuzz_targets/pg_array.rs"
+test = false
+doc = false
+bench = false
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }

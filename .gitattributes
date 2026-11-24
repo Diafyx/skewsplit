@@ -6,6 +6,7 @@
 # of the Markdown lint and link checks in `make docs`.
 uv.lock linguist-generated=true
 rust/Cargo.lock linguist-generated=true
+rust/fuzz/Cargo.lock linguist-generated=true
 spec/fixtures/** linguist-generated=true
 **/snapshots/** linguist-generated=true
 **/__snapshots__/** linguist-generated=true

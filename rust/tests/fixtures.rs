@@ -1,7 +1,7 @@
 //! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
 //! every array text fixture in `spec/fixtures/pg-array/` (section 12), and
-//! the plan of each planner input of the fixtures printed in each format of
-//! the command line, as the Python command line prints it.
+//! the command line's output for the planner inputs of the fixtures, which
+//! must be the Python command line's.
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
 //! these tests.
 //!
@@ -10,7 +10,9 @@
 //! plan before it is compared, after checking that each one is a non-empty
 //! string.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 
 use skewsplit::SPEC_VERSION;
 use skewsplit::codecs::codec_for;
@@ -201,23 +203,34 @@ fn every_array_text_fixture_reads_byte_for_byte() {
     );
 }
 
-/// What the Python command line prints for a plan in each `--format`.
-fn printed(result: &skewsplit::plan::Plan, format: &str) -> String {
-    match format {
-        "text" => result.report(),
-        "json" => result.to_json(Some(2)).unwrap(),
-        "pyspark" => result.to_pyspark(),
-        "scala" => result.to_scala(),
-        _ => unreachable!("{format} is not a format"),
-    }
+/// The formats of `skewsplit plan --format`.
+const FORMATS: [&str; 4] = ["text", "json", "pyspark", "scala"];
+
+/// Run `skewsplit plan --stats - --format <format>` with the input on
+/// standard input.
+fn plan_on_the_command_line(input: &str, format: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skewsplit"))
+        .args(["plan", "--stats", "-", "--format", format])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the binary runs");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
 }
 
 /// `tests/cli/python-outputs.json` has what the Python command line prints
-/// for each planner input of the fixtures, in each `--format`, and
-/// `test_conformance.py` checks that it is up to date. The crate must give
-/// the same, byte for byte, or the same error line.
+/// for each planner input of the fixtures, in each format, and
+/// `test_conformance.py` checks that it is up to date. The Rust command line
+/// must print the same, byte for byte, or the same error line.
 #[test]
-fn every_plan_is_printed_as_python_prints_it() {
+fn the_command_line_prints_what_python_prints() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cli/python-outputs.json");
     let file = json::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
     let cases = file.get("cases").and_then(Value::as_array).unwrap();
@@ -230,19 +243,28 @@ fn every_plan_is_printed_as_python_prints_it() {
     }
     let (mut plans, mut errors) = (0, 0);
     for (case, name) in cases.iter().zip(names) {
-        match plan(case.get("input").unwrap()) {
-            Ok(result) => {
-                plans += 1;
-                for format in ["text", "json", "pyspark", "scala"] {
-                    let expected = case.get(format).and_then(Value::as_str).unwrap();
-                    assert_eq!(printed(&result, format), expected, "{name} {format}");
-                }
+        let input = case.get("input").unwrap().to_json(None).unwrap();
+        for format in FORMATS {
+            let output = plan_on_the_command_line(&input, format);
+            let (stdout, stderr) = (
+                String::from_utf8(output.stdout).unwrap(),
+                String::from_utf8(output.stderr).unwrap(),
+            );
+            if let Some(error) = case.get("error").and_then(Value::as_str) {
+                assert_eq!(output.status.code(), Some(3), "{name} {format}");
+                assert_eq!(stdout, "", "{name} {format}");
+                assert_eq!(stderr, format!("skewsplit: {error}\n"), "{name} {format}");
+            } else {
+                let expected = case.get(format).and_then(Value::as_str).unwrap();
+                assert_eq!(output.status.code(), Some(0), "{name} {format}: {stderr}");
+                assert_eq!(stdout, format!("{expected}\n"), "{name} {format}");
+                assert_eq!(stderr, "", "{name} {format}");
             }
-            Err(error) => {
-                errors += 1;
-                let expected = case.get("error").and_then(Value::as_str).unwrap();
-                assert_eq!(format!("{}: {error}", error.code()), expected, "{name}");
-            }
+        }
+        if case.get("error").is_some() {
+            errors += 1;
+        } else {
+            plans += 1;
         }
     }
     assert!(

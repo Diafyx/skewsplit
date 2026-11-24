@@ -24,7 +24,8 @@ GROUPS = SHARED | PYTHON | {"rust", "bench", "docs", "repo"}
 # The groups that select each job, besides the shared ones. `lint` always runs,
 # and lints the Rust crate too, and `pr-size` runs on every pull request. The
 # benchmark helpers in bench/ are unit-tested in py-unit; the benchmark itself
-# runs in bench.yml. `packaging` builds the Python package and the crate.
+# runs in bench.yml. `packaging` builds the Python package and the crate, and
+# `conformance` runs the golden fixtures against both.
 JOBS: dict[str, frozenset[str]] = {
     "py-unit": PYTHON | {"bench"},
     "py-lowest": PYTHON,
@@ -33,7 +34,7 @@ JOBS: dict[str, frozenset[str]] = {
     "coverage": PYTHON | {"bench"},
     "packaging": PYTHON | {"rust"},
     "docs": PYTHON | {"docs"},
-    "conformance": PYTHON,
+    "conformance": PYTHON | {"rust"},
     "core-bench": frozenset({"py-core"}),
     "rust": frozenset({"rust"}),
 }

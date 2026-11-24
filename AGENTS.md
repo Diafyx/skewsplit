@@ -24,7 +24,7 @@ make check-all   # plus the lowest-dependency test run
 make lint        # ruff, ruff format, mypy, typos, actionlint, zizmor, filter guard, fixtures,
                  # cargo fmt, clippy and rustdoc
 make py-unit     # unit and property tests with coverage data
-make conformance # golden fixtures and spec invariants, more Hypothesis examples
+make conformance # golden fixtures against Python and Rust, spec invariants, more Hypothesis examples
 make mutation    # mutmut on the core (about five minutes; nightly runs it)
 make rust-test   # the crate's tests (cargo-nextest) and doc tests
 make rust-coverage  # the crate's coverage gates (cargo-llvm-cov)

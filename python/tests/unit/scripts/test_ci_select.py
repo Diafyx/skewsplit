@@ -55,11 +55,12 @@ def test_benchmark_changes_run_the_unit_tests_of_its_helpers() -> None:
     }
 
 
-def test_rust_changes_run_the_rust_job_and_packaging() -> None:
+def test_rust_changes_run_the_rust_job_packaging_and_conformance() -> None:
     assert running(select("pull_request", {"rust"}, set(), full=False)) == {
         "lint",
         "rust",
         "packaging",
+        "conformance",
         "pr-size",
     }
 

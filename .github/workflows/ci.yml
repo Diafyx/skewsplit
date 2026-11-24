@@ -27,6 +27,14 @@ defaults:
   run:
     shell: bash
 
+env:
+  # The repository allows only GitHub's own actions and a few others, so the
+  # cargo tools of the rust and conformance jobs are built from crates.io with
+  # their locked dependencies, then cached. Dependabot cannot see them: update
+  # them here by hand.
+  NEXTEST_VERSION: 0.9.152
+  LLVM_COV_VERSION: 0.9.1
+
 jobs:
   # Decides which jobs run. Pull requests select jobs by changed paths (see
   # .github/filters.yml and scripts/ci_select.py); every other event, and a
@@ -439,13 +447,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The golden fixtures and the spec invariants, with the ci Hypothesis profile.
+  # The golden fixtures against both implementations, one in each leg: the
+  # Python core, with the spec invariants and the ci Hypothesis profile, and
+  # the Rust crate.
   conformance:
-    name: conformance (python)
+    name: conformance (${{ matrix.implementation }})
     needs: changes
     if: needs.changes.outputs.conformance == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - implementation: python
+            target: py-conformance
+            report: reports/junit-conformance.xml
+          - implementation: rust
+            target: rust-conformance
+            report: reports/junit-conformance-rust.xml
+    env:
+      IMPLEMENTATION: ${{ matrix.implementation }}
+      TARGET: ${{ matrix.target }}
+      REPORT: ${{ matrix.report }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -454,15 +478,28 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: make conformance
+      - name: Install Rust
+        if: matrix.implementation == 'rust'
+        working-directory: rust
+        run: rustup toolchain install
+      - id: nextest
+        if: matrix.implementation == 'rust'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-nextest*
+          key: cargo-nextest-${{ runner.os }}-${{ env.NEXTEST_VERSION }}
+      - name: Install cargo-nextest
+        if: matrix.implementation == 'rust' && steps.nextest.outputs.cache-hit != 'true'
+        run: cargo install --locked "cargo-nextest@$NEXTEST_VERSION"
+      - run: make "$TARGET"
       - name: Summarise tests
         if: ${{ !cancelled() }}
-        run: uv run --no-project python scripts/junit_summary.py "conformance (python)" reports/junit-conformance.xml
+        run: uv run --no-project python scripts/junit_summary.py "conformance ($IMPLEMENTATION)" "$REPORT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: junit-conformance
-          path: reports/junit-conformance.xml
+          name: junit-conformance-${{ matrix.implementation }}
+          path: ${{ matrix.report }}
           retention-days: 7
 
   # Planner micro-benchmarks when the core changes. Timings on shared runners
@@ -514,11 +551,6 @@ jobs:
       COVERAGE: ${{ matrix.os == 'ubuntu-latest' && matrix.toolchain == 'stable' }}
       # Incremental builds only help when the same files change again.
       CARGO_INCREMENTAL: 0
-      # The repository allows only GitHub's own actions and a few others, so
-      # these are built from crates.io with their locked dependencies, then
-      # cached. Dependabot cannot see them: update them here by hand.
-      NEXTEST_VERSION: 0.9.152
-      LLVM_COV_VERSION: 0.9.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

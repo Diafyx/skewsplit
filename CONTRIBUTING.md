@@ -101,11 +101,15 @@ Use a throwaway database all the same.
 - `spec/fixtures/*.json` are the shared truth for every implementation. A
   change to the spec changes them in the same pull request, and
   `make check-fixtures` checks them; see [spec/README.md](spec/README.md).
-- `make conformance` runs every fixture against the Python core, plus the
-  Hypothesis invariants of the spec (every value matches exactly one
-  predicate, and so on), with the `ci` profile. The `conformance` CI job runs
-  it. `HYPOTHESIS_PROFILE` picks the profile: `dev` (default), `ci`,
-  `nightly` or `fuzz`.
+- `make conformance` runs the fixtures against both implementations, and the
+  `conformance` CI job runs each in a leg of its own:
+  - `make py-conformance` runs every fixture against the Python core, plus the
+    Hypothesis invariants of the spec (every value matches exactly one
+    predicate, and so on), with the `ci` profile. `HYPOTHESIS_PROFILE` picks
+    the profile: `dev` (default), `ci`, `nightly` or `fuzz`.
+  - `make rust-conformance` runs the fixtures the crate has ported, in
+    `rust/tests/fixtures.rs`. A fixture folder it hasn't ported yet must be
+    listed there, so a new folder can't be skipped by accident.
 - `make mutation` runs mutmut on the core, in about five minutes, and fails
   when fewer than 90% of the tested mutants are killed. A mutant that times
   out counts as not killed. The survivors are listed in

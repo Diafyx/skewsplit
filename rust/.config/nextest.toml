@@ -1,5 +1,14 @@
 # cargo-nextest settings. make rust-test runs the ci profile, which runs every
 # test and writes JUnit XML to target/nextest/ci/junit.xml.
+
+# Every test has a time limit, so a test that never finishes fails instead of
+# hanging the run. A test still running after 30 seconds is reported as slow,
+# and after four periods, 2 minutes, it is terminated and fails as TIMEOUT.
+# Every test takes milliseconds. The ci profile inherits this, and so does a
+# plain cargo nextest run.
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 4 }
+
 [profile.ci]
 fail-fast = false
 

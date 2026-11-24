@@ -32,6 +32,10 @@ make rust-test      # the tests with cargo-nextest, then the doc tests
 make rust-coverage  # the tests with coverage, and the coverage gates
 ```
 
+A test that runs for more than 2 minutes is stopped and fails as `TIMEOUT`.
+The limit is in `rust/.config/nextest.toml`. It doesn't apply
+to the doc tests, which nextest doesn't run.
+
 ## License
 
 Apache-2.0

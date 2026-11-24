@@ -39,7 +39,7 @@ CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
 	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance py-conformance \
 	rust-conformance property mutation links bench-core bench rust-lint rust-test rust-coverage \
-	rust-msrv clean
+	rust-fuzz rust-msrv clean
 
 check: lint py-unit coverage rust-test rust-coverage packaging docs
 
@@ -66,11 +66,15 @@ lint: check-filters check-fixtures rust-lint
 	$(UV_RUN) check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
 
 # Formatting, clippy with every warning an error (the lints are in
-# rust/Cargo.toml), and the API docs with broken links as errors.
+# rust/Cargo.toml), and the API docs with broken links as errors. The fuzz
+# targets in rust/fuzz, a crate of their own, get the same formatting and
+# clippy checks on stable Rust, so they build whenever the crate changes.
 rust-lint:
 	$(CARGO) fmt --check
 	$(CARGO) clippy --all-targets --locked -- -D warnings
 	$(CARGO) doc --no-deps --locked
+	cd rust/fuzz && cargo fmt --check
+	cd rust/fuzz && cargo clippy --locked -- -D warnings
 rust-lint: export RUSTDOCFLAGS := -D warnings
 
 # The tests with cargo-nextest, which writes JUnit XML, then the doc tests,
@@ -93,6 +97,15 @@ rust-coverage:
 	$(CARGO) llvm-cov report --ignore-filename-regex 'src/main\.rs$$' --fail-uncovered-lines 0
 	$(CARGO) llvm-cov report --fail-under-lines 95
 	$(UV_RUN) diff-cover $(REPORTS)/rust.lcov --compare-branch=$(COMPARE) --fail-under=100
+
+# Fuzz the array text reader (rust/fuzz/fuzz_targets/pg_array.rs) for
+# FUZZ_SECONDS with cargo-fuzz and libFuzzer, from the dictionary of its tokens.
+# It needs Rust nightly and cargo-fuzz; nightly.yml runs it for 10 minutes. A
+# crashing input is saved in rust/fuzz/artifacts/pg_array/.
+FUZZ_SECONDS ?= 60
+rust-fuzz:
+	cd rust/fuzz && cargo +nightly fuzz run pg_array -- \
+		-max_total_time=$(FUZZ_SECONDS) -dict=pg_array.dict
 
 # Print the minimum supported Rust version, for CI to install it.
 rust-msrv:

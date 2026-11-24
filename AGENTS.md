@@ -28,6 +28,7 @@ make conformance # golden fixtures against Python and Rust, spec invariants, mor
 make mutation    # mutmut on the core (about five minutes; nightly runs it)
 make rust-test   # the crate's tests (cargo-nextest) and doc tests
 make rust-coverage  # the crate's coverage gates (cargo-llvm-cov)
+make rust-fuzz   # the array text fuzz target (needs Rust nightly and cargo-fuzz)
 uv run --frozen pytest python/tests/unit/test_version.py   # one file
 ```
 
@@ -49,7 +50,8 @@ benchmark (`make bench`) run in CI only. Do not start Docker or install a databa
   `match` statements or other syntax newer than 3.9.
 - Rust code must build with the minimum supported version, `rust-version` in
   `rust/Cargo.toml`. The crate has no dependencies, only proptest as a
-  dev-dependency for its tests, and clippy's pedantic lints are errors.
+  dev-dependency for its tests, and clippy's pedantic lints are errors. The
+  fuzz targets in `rust/fuzz` are a crate of their own, with libfuzzer-sys.
 - The package has no runtime dependencies.
 - Tests go in `python/tests/<kind>/` (`unit`, `property`, `integration`,
   `spark`); the folder sets the marker.

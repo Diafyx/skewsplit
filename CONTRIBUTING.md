@@ -48,6 +48,7 @@ make check
 | `make rust-test` | The crate's tests with cargo-nextest, and its doc tests |
 | `make rust-test RUST_TOOLCHAIN=msrv` | The same with the minimum supported Rust version, once `rustup toolchain install` has installed it |
 | `make rust-coverage` | The crate's coverage gates |
+| `make rust-fuzz` | The array text reader's fuzz target, for `FUZZ_SECONDS` (60), with Rust nightly and cargo-fuzz |
 
 To run the same checks before each commit, install the hooks with
 `uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and

@@ -1,0 +1,6 @@
+# What cargo-fuzz writes: its builds, the corpus it grows, the inputs that
+# crashed, and coverage data.
+target/
+corpus/
+artifacts/
+coverage/

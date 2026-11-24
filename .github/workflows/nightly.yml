@@ -5,6 +5,7 @@ name: Nightly
 # - the whole CI suite, with spark-e2e on every Python of each Spark line;
 # - the property tests and the spec invariants with the nightly Hypothesis
 #   profile, and each parser's property tests with the longer fuzz profile;
+# - the Rust array text reader with cargo-fuzz, for 10 minutes;
 # - mutation testing of the core. Below 90% of the mutants killed, it opens an
 #   issue, or comments on the one already open;
 # - the Spark benchmark. When skewsplit's median max task time moves by more
@@ -113,6 +114,41 @@ jobs:
         with:
           name: junit-fuzz-${{ matrix.parser }}
           path: reports/junit-property.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The Rust array text reader (rust/fuzz) with cargo-fuzz and libFuzzer, on
+  # Rust nightly, which cargo-fuzz needs. A crashing input is uploaded.
+  rust-fuzz:
+    name: fuzz (rust, pg_array)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # Built from crates.io with its locked dependencies, then cached:
+      # Dependabot cannot see it, so update it here by hand.
+      CARGO_FUZZ_VERSION: 0.13.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust nightly
+        run: rustup toolchain install nightly --profile minimal
+      - id: cargo-fuzz
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-fuzz*
+          key: cargo-fuzz-${{ runner.os }}-${{ env.CARGO_FUZZ_VERSION }}
+      - name: Install cargo-fuzz
+        if: steps.cargo-fuzz.outputs.cache-hit != 'true'
+        run: cargo install --locked "cargo-fuzz@$CARGO_FUZZ_VERSION"
+      - run: make rust-fuzz FUZZ_SECONDS=600
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: fuzz-rust-pg-array
+          path: rust/fuzz/artifacts/
           if-no-files-found: ignore
           retention-days: 14
 

@@ -32,9 +32,14 @@ make rust-test      # the tests with cargo-nextest, then the doc tests
 make rust-coverage  # the tests with coverage, and the coverage gates
 ```
 
-A test that runs for more than 2 minutes is stopped and fails as `TIMEOUT`.
-The limit is in `rust/.config/nextest.toml`. It doesn't apply
-to the doc tests, which nextest doesn't run.
+A test that runs for more than 2 minutes is stopped and fails as `TIMEOUT`, and
+a property test after 15 minutes. The limits are in `rust/.config/nextest.toml`.
+They don't apply to the doc tests, which nextest doesn't run.
+
+The property tests in `tests/properties.rs` run 100 cases each. Set
+`PROPTEST_PROFILE` to `ci` for 1000, `nightly` for 20000 or `fuzz` for 100000.
+A failing case is shrunk and printed, and its seed is saved in
+`tests/properties.proptest-regressions`, to commit with the fix.
 
 ## License
 

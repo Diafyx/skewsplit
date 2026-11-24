@@ -109,7 +109,12 @@ Use a throwaway database all the same.
     the profile: `dev` (default), `ci`, `nightly` or `fuzz`.
   - `make rust-conformance` runs the fixtures the crate has ported, in
     `rust/tests/fixtures.rs`. A fixture folder it hasn't ported yet must be
-    listed there, so a new folder can't be skipped by accident.
+    listed there, so a new folder can't be skipped by accident. It also runs
+    the invariants in `rust/tests/properties.rs` with proptest, with as many
+    cases as `HYPOTHESIS_PROFILE` gives Python; `make rust-test` runs them with
+    the `dev` count. When one fails, proptest saves its seed in
+    `rust/tests/properties.proptest-regressions`: commit that file with the
+    fix, and every later run replays the seed first.
 - `make mutation` runs mutmut on the core, in about five minutes, and fails
   when fewer than 90% of the tested mutants are killed. A mutant that times
   out counts as not killed. The survivors are listed in

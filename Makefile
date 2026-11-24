@@ -182,11 +182,14 @@ py-conformance:
 	HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) $(UV_RUN) pytest -m conformance \
 		--junitxml=$(REPORTS)/junit-conformance.xml
 
-# The Rust crate: the golden fixtures it has ported, in rust/tests/fixtures.rs.
+# The Rust crate: the golden fixtures it has ported (rust/tests/fixtures.rs) and
+# the invariants (rust/tests/properties.rs), with as many cases as
+# $(HYPOTHESIS_PROFILE) gives Python. make rust-test runs them with the dev count.
 rust-conformance:
 	mkdir -p $(REPORTS)
-	$(CARGO) nextest run --locked --profile ci -E 'binary(fixtures)'
+	$(CARGO) nextest run --locked --profile ci -E 'binary(fixtures) | binary(properties)'
 	cp rust/target/nextest/ci/junit.xml $(REPORTS)/junit-conformance-rust.xml
+rust-conformance: export PROPTEST_PROFILE := $(HYPOTHESIS_PROFILE)
 
 # The property tests in PROPERTY_TESTS with $(HYPOTHESIS_PROFILE). nightly.yml
 # runs all of them with the nightly profile, and each parser's with fuzz.

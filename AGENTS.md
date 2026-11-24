@@ -48,8 +48,8 @@ benchmark (`make bench`) run in CI only. Do not start Docker or install a databa
 - Code must run on Python 3.9: use `from __future__ import annotations`, and no
   `match` statements or other syntax newer than 3.9.
 - Rust code must build with the minimum supported version, `rust-version` in
-  `rust/Cargo.toml`. The crate has no dependencies, and clippy's pedantic lints
-  are errors.
+  `rust/Cargo.toml`. The crate has no dependencies, only proptest as a
+  dev-dependency for its tests, and clippy's pedantic lints are errors.
 - The package has no runtime dependencies.
 - Tests go in `python/tests/<kind>/` (`unit`, `property`, `integration`,
   `spark`); the folder sets the marker.

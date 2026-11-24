@@ -78,8 +78,9 @@ from the largest predicate. For the array text fixtures it checks only the
 names and the spec version; for the statistics and sample fixtures, also the
 warnings in each result's `source`. A hash plan follows from its row counts
 alone, so it checks those in full. It does not plan ranges, so a wrong split point is
-caught by review of the description and by the implementations' tests: for
-Python, `make conformance` runs every fixture against the core.
+caught by review of the description and by the implementations' tests:
+`make conformance` runs every fixture against the Python core and the Rust
+crate.
 
 A change to `SPEC.md` that changes any output changes the fixtures in the same
 pull request.

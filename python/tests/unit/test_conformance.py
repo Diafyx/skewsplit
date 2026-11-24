@@ -84,6 +84,12 @@ def test_there_are_fixtures() -> None:
     assert len(FIXTURES) >= 12
 
 
+def test_every_fixture_folder_is_run() -> None:
+    # A new folder fails this until its fixtures are run here.
+    folders = {path.name for path in (SPEC / "fixtures").iterdir() if path.is_dir()}
+    assert folders == {"hash", "pg-array", "pg-stats", "sample"}
+
+
 @pytest.mark.parametrize("path", FIXTURES, ids=[path.stem for path in FIXTURES])
 def test_fixture(path: Path) -> None:
     fixture = json.loads(path.read_text(encoding="utf-8"))

@@ -37,8 +37,9 @@ RUST_TOOLCHAIN ?=
 CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
-	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance property mutation links \
-	bench-core bench rust-lint rust-test rust-coverage rust-msrv clean
+	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance py-conformance \
+	rust-conformance property mutation links bench-core bench rust-lint rust-test rust-coverage \
+	rust-msrv clean
 
 check: lint py-unit coverage rust-test rust-coverage packaging docs
 
@@ -168,13 +169,24 @@ docs:
 	changed=$$(git diff --name-only --diff-filter=d $(COMPARE)... -- $(MD_PATHSPEC)); \
 	if [[ -n "$$changed" ]]; then $(SCRIPT) scripts/check_links.py --external $$changed; fi
 
-# The golden fixtures and the spec invariants, with the ci Hypothesis profile
-# (ten times the examples of a plain run). HYPOTHESIS_PROFILE=nightly or fuzz searches longer.
+# The golden fixtures in spec/fixtures/ against both implementations. CI runs
+# each in a leg of the conformance job.
+conformance: py-conformance rust-conformance
+
+# The Python core: the golden fixtures and the spec invariants, with the ci
+# Hypothesis profile (ten times the examples of a plain run).
+# HYPOTHESIS_PROFILE=nightly or fuzz searches longer.
 HYPOTHESIS_PROFILE ?= ci
-conformance:
+py-conformance:
 	mkdir -p $(REPORTS)
 	HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) $(UV_RUN) pytest -m conformance \
 		--junitxml=$(REPORTS)/junit-conformance.xml
+
+# The Rust crate: the golden fixtures it has ported, in rust/tests/fixtures.rs.
+rust-conformance:
+	mkdir -p $(REPORTS)
+	$(CARGO) nextest run --locked --profile ci -E 'binary(fixtures)'
+	cp rust/target/nextest/ci/junit.xml $(REPORTS)/junit-conformance-rust.xml
 
 # The property tests in PROPERTY_TESTS with $(HYPOTHESIS_PROFILE). nightly.yml
 # runs all of them with the nightly profile, and each parser's with fuzz.

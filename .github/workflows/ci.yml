@@ -132,9 +132,16 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Install GNU make
+      # The Windows image has GNU make: MinGW-w64's mingw32-make, copied to
+      # make.exe in C:\mingw64\bin, which is on PATH. Nothing is downloaded,
+      # so an outage of a package feed can't fail the job.
+      - name: Check GNU make
         if: runner.os == 'Windows'
-        run: choco install make --version=4.4.1 --no-progress --yes
+        run: |
+          command -v make
+          version=$(make --version)
+          echo "$version"
+          [[ $version == "GNU Make 4."* ]]
       - run: make py-unit PYTHON="$PYTHON"
       - name: Summarise tests
         if: ${{ !cancelled() }}
@@ -521,9 +528,16 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - name: Install GNU make
+      # The Windows image has GNU make: MinGW-w64's mingw32-make, copied to
+      # make.exe in C:\mingw64\bin, which is on PATH. Nothing is downloaded,
+      # so an outage of a package feed can't fail the job.
+      - name: Check GNU make
         if: runner.os == 'Windows'
-        run: choco install make --version=4.4.1 --no-progress --yes
+        run: |
+          command -v make
+          version=$(make --version)
+          echo "$version"
+          [[ $version == "GNU Make 4."* ]]
       # rustup is on every runner. With no name, it installs or updates the
       # toolchain that rust/rust-toolchain.toml names, with its components.
       - name: Install Rust

@@ -6,8 +6,9 @@ distribution.
 
 > **Status: not usable yet.** So far this crate has the range planner, which
 > gives byte for byte the plans of the Python package, with the value codecs,
-> the input checks, JSON as Python reads and writes it, and PostgreSQL's array
-> text. The hash planner and the command line are being ported from the
+> the input checks, JSON as Python reads and writes it, PostgreSQL's array
+> text, and the PySpark and Scala snippets of a plan. The hash planner and the
+> command line are being ported from the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 
@@ -40,6 +41,15 @@ The property tests in `tests/properties.rs` run 100 cases each. Set
 `PROPTEST_PROFILE` to `ci` for 1000, `nightly` for 20000 or `fuzz` for 100000.
 A failing case is shrunk and printed, and its seed is saved in
 `tests/properties.proptest-regressions`, to commit with the fix.
+
+`tests/cli/python-outputs.json` holds what the Python command line prints for
+the planner inputs of the fixtures, in each format, and `tests/fixtures.rs`
+checks that this crate gives the same. After a change to the output, write the
+file again from the repository root:
+
+```sh
+SKEWSPLIT_WRITE_CLI_OUTPUTS=1 uv run --frozen pytest python/tests/unit/test_conformance.py
+```
 
 The array text reader has a fuzz target in `fuzz/`, a crate of its own that
 `make rust-lint` checks. Running it needs Rust nightly and

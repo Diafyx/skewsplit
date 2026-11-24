@@ -1,6 +1,7 @@
-//! The plan and its report (spec section 10), with the cases of the Python
-//! package's `python/tests/unit/test_plan.py`. The `PySpark` and Scala snippets
-//! come with the command line.
+//! The plan, its report (spec section 10) and its `PySpark` and Scala
+//! snippets, with the cases of the Python package's
+//! `python/tests/unit/test_plan.py`. `tests/fixtures.rs` checks the report and
+//! the snippets of every fixture against Python's.
 
 use skewsplit::json::{self, Value};
 use skewsplit::plan::Plan;
@@ -274,4 +275,131 @@ fn hash_predicates_and_full_scans_are_written_as_spec_section_16_says() {
         warning.to_value().to_json(None).unwrap(),
         r#"{"code": "full_scans", "message": "each reads every row"}"#
     );
+}
+
+const PYSPARK_SECTION_1: &str = r#"# skewsplit: 4 of 4 partitions plus one for NULL, with an estimated skew score of 1.887
+# spark, url, table and properties are yours: the session, the JDBC URL, the table,
+# and the connection properties such as the user and password.
+predicates = [
+    '"customer_id" IS NULL',
+    '"customer_id" < 42',
+    '"customer_id" = 42',
+    '"customer_id" > 42 AND "customer_id" < 520',
+    '"customer_id" >= 520',
+]
+df = spark.read.jdbc(url, table, predicates=predicates, properties=properties)"#;
+
+const SCALA_SECTION_1: &str = r#"// skewsplit: 4 of 4 partitions plus one for NULL, with an estimated skew score of 1.887
+// spark, url, table and properties are yours: the session, the JDBC URL, the table,
+// and the connection properties such as the user and password.
+val predicates = Array(
+  "\"customer_id\" IS NULL",
+  "\"customer_id\" < 42",
+  "\"customer_id\" = 42",
+  "\"customer_id\" > 42 AND \"customer_id\" < 520",
+  "\"customer_id\" >= 520"
+)
+val df = spark.read.jdbc(url, table, predicates, properties)"#;
+
+/// The plan of section 1 for another column name.
+fn for_column(column: &str) -> Plan {
+    let mut input = json::parse(SECTION_1).unwrap();
+    let Value::Object(object) = &mut input else {
+        unreachable!("the input is an object");
+    };
+    object.insert("column", Value::from(column));
+    plan(&input).unwrap()
+}
+
+#[test]
+fn the_snippets_of_section_1() {
+    assert_eq!(planned(SECTION_1).to_pyspark(), PYSPARK_SECTION_1);
+    assert_eq!(planned(SECTION_1).to_scala(), SCALA_SECTION_1);
+}
+
+#[test]
+fn a_snippet_without_rows() {
+    let result = planned(
+        r#"{"column": "c", "type": "int4", "partitions": 3, "null_rows": 0, "mcv": [],
+            "histogram": null}"#,
+    );
+    let summary = "skewsplit: 1 of 3 partitions plus one for NULL, with no skew score";
+    assert_eq!(
+        result.to_pyspark().split('\n').next(),
+        Some(format!("# {summary}").as_str())
+    );
+    assert_eq!(
+        result.to_scala().split('\n').next(),
+        Some(format!("// {summary}").as_str())
+    );
+}
+
+#[test]
+fn the_comments_hold_nothing_from_the_column() {
+    for column in ["new\nline", "*/ x /*", "carriage\rreturn"] {
+        let result = for_column(column);
+        // Only the predicates differ, so a line break in a name cannot end a comment.
+        for (snippet, reference) in [
+            (result.to_pyspark(), PYSPARK_SECTION_1),
+            (result.to_scala(), SCALA_SECTION_1),
+        ] {
+            let lines: Vec<&str> = snippet.split('\n').collect();
+            let expected: Vec<&str> = reference.split('\n').collect();
+            assert_eq!(lines.len(), expected.len(), "{column:?}");
+            assert_eq!(lines[..4], expected[..4], "{column:?}");
+            assert_eq!(lines[lines.len() - 2..], expected[expected.len() - 2..]);
+        }
+    }
+}
+
+#[test]
+fn a_predicate_is_a_python_string_literal_as_repr_writes_it() {
+    for (column, literal) in [
+        // Single quotes, unless the text has one and no double quote.
+        ("it's", r#"'"it\'s" IS NULL'"#),
+        ("a\\b", r#"'"a\\b" IS NULL'"#),
+        ("tab\there", r#"'"tab\there" IS NULL'"#),
+        // Characters that are not printable, as \x, \u or \U escapes.
+        ("\u{1}\u{7f}\u{85}\u{a0}", r#"'"\x01\x7f\x85\xa0" IS NULL'"#),
+        (
+            "\u{2028}\u{202e}\u{feff}",
+            r#"'"\u2028\u202e\ufeff" IS NULL'"#,
+        ),
+        ("\u{e0001}\u{10fffd}", r#"'"\U000e0001\U0010fffd" IS NULL'"#),
+        // Printable characters as they are, the space and non-ASCII letters too.
+        ("ü 😀 日", r#"'"ü 😀 日" IS NULL'"#),
+    ] {
+        let snippet = for_column(column).to_pyspark();
+        assert_eq!(
+            snippet.split('\n').nth(4),
+            Some(format!("    {literal},").as_str())
+        );
+    }
+}
+
+#[test]
+fn a_predicate_is_a_scala_string_literal_with_only_printable_characters() {
+    for (column, literal) in [
+        ("say \"hi\"", r#""\"say \"\"hi\"\"\" IS NULL""#),
+        ("back\\slash", r#""\"back\\slash\" IS NULL""#),
+        // A \u in the name is not an escape, because its backslash is doubled.
+        ("\\u0022", r#""\"\\u0022\" IS NULL""#),
+        (
+            "a\nb\rc\td\u{8}e\u{c}f",
+            r#""\"a\nb\rc\td\be\ff\" IS NULL""#,
+        ),
+        (
+            "\u{1}\u{85}\u{a0}\u{2029}",
+            r#""\"\u0001\u0085\u00a0\u2029\" IS NULL""#,
+        ),
+        // A character above U+FFFF is two UTF-16 units.
+        ("\u{e0001}", r#""\"\udb40\udc01\" IS NULL""#),
+        ("ü 😀 日 $x ${x}", r#""\"ü 😀 日 $x ${x}\" IS NULL""#),
+    ] {
+        let snippet = for_column(column).to_scala();
+        assert_eq!(
+            snippet.split('\n').nth(4),
+            Some(format!("  {literal},").as_str())
+        );
+    }
 }

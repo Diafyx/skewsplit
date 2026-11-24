@@ -1,7 +1,11 @@
 //! A plan: the predicates, their estimated rows and the warnings (spec
-//! section 10), as JSON and as a report for people.
+//! section 10), as JSON, as a report for people, and as Python or Scala code
+//! that reads the table.
+
+use std::fmt::Write as _;
 
 use crate::SPEC_VERSION;
+use crate::codecs::{printable, quoted};
 use crate::error::SpecError;
 use crate::json::{JsonError, Object, Value};
 
@@ -319,6 +323,105 @@ impl Plan {
         lines.extend(warnings.map(|(code, message)| format!("warning {code}: {message}")));
         lines.join("\n")
     }
+
+    /// Python code that reads a table with Spark and these predicates, as
+    /// the Python core writes it. `spark`, `url`, `table` and `properties`
+    /// are the user's: the session, the JDBC URL, the table and the
+    /// connection properties. Each predicate is a Python string literal.
+    #[must_use]
+    pub fn to_pyspark(&self) -> String {
+        let mut lines = vec![
+            format!("# {}", self.snippet_summary()),
+            snippet_note("#"),
+            "predicates = [".to_owned(),
+        ];
+        lines.extend(
+            self.parts
+                .iter()
+                .map(|part| format!("    {},", quoted(&part.sql))),
+        );
+        lines.push("]".to_owned());
+        lines.push(
+            "df = spark.read.jdbc(url, table, predicates=predicates, properties=properties)"
+                .to_owned(),
+        );
+        lines.join("\n")
+    }
+
+    /// Scala code that reads a table with these predicates, as for
+    /// [`Plan::to_pyspark`]. Each predicate is a Scala string literal that
+    /// Scala 2.12, 2.13 and 3 read the same way.
+    #[must_use]
+    pub fn to_scala(&self) -> String {
+        let predicates: Vec<String> = self
+            .parts
+            .iter()
+            .map(|part| format!("  {}", scala_string(&part.sql)))
+            .collect();
+        [
+            format!("// {}", self.snippet_summary()),
+            snippet_note("//"),
+            "val predicates = Array(".to_owned(),
+            predicates.join(",\n"),
+            ")".to_owned(),
+            "val df = spark.read.jdbc(url, table, predicates, properties)".to_owned(),
+        ]
+        .join("\n")
+    }
+
+    /// The first line of a snippet. Nothing from the column goes into a
+    /// comment, where a line break in its name would end the comment.
+    fn snippet_summary(&self) -> String {
+        let skew = match self.skew_milli {
+            Some(k) => format!("an estimated skew score of {}", milli_text(k)),
+            None => "no skew score".to_owned(),
+        };
+        format!(
+            "skewsplit: {} of {} partitions plus one for NULL, with {skew}",
+            self.planned_partitions(),
+            self.requested_partitions
+        )
+    }
+}
+
+/// The two comment lines of a snippet on what the user provides.
+fn snippet_note(comment: &str) -> String {
+    format!(
+        "{comment} spark, url, table and properties are yours: the session, the JDBC URL, the table,\n\
+         {comment} and the connection properties such as the user and password."
+    )
+}
+
+/// Text as a Scala string literal, as the Python core writes it. Scala 2.12
+/// reads `\u` escapes before anything else, even inside a string, so `"`
+/// would end the string there: these characters always get their named
+/// escape, and `\u` is used only for characters that are not printable. A
+/// backslash in the text is doubled, so a `\u` in the text never starts an
+/// escape.
+fn scala_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for char in text.chars() {
+        match char {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            // Scala strings are UTF-16: a character above U+FFFF is two
+            // units. Writing to a String cannot fail.
+            char if !printable(char) => {
+                for unit in char.encode_utf16(&mut [0; 2]) {
+                    let _ = write!(out, "\\u{unit:04x}");
+                }
+            }
+            char => out.push(char),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// An error as the JSON object of spec section 10.

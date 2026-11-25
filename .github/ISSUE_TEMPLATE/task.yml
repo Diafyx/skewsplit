@@ -28,18 +28,6 @@ body:
         - [ ]
     validations:
       required: true
-  - type: dropdown
-    id: size
-    attributes:
-      label: Size estimate
-      options:
-        - S (up to 100 lines)
-        - M (101 to 300)
-        - L (301 to 700)
-        - XL (701 to 1500)
-        - XXL (more than 1500)
-    validations:
-      required: true
   - type: textarea
     id: notes
     attributes:

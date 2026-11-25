@@ -50,6 +50,7 @@ make check
 | `make rust-coverage` | The crate's coverage gates |
 | `make rust-fuzz` | The array text reader's fuzz target, for `FUZZ_SECONDS` (60), with Rust nightly and cargo-fuzz |
 | `make differential` | The Rust command line against the Python core on random inputs, after building the binary. `SEED=N` repeats a run |
+| `make rust-mutation` | cargo-mutants on the crate's library, with cargo-nextest. `SHARD=k/n` tests one share of the mutants |
 
 To run the same checks before each commit, install the hooks with
 `uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and
@@ -84,7 +85,7 @@ Use a throwaway database all the same.
 | Coverage of the lines your pull request changes (`diff-cover`) | 100% |
 | Warnings | Errors (`filterwarnings = error`, clippy and rustdoc with `-D warnings`) |
 | Types | `mypy --strict`, no errors |
-| Mutation score of the core (nightly) | At least 90% of mutants killed |
+| Mutation score of the core and of the Rust library (nightly) | At least 90% of mutants killed |
 
 - Tests live in `python/tests/<kind>/`. The folder sets the kind: `unit`,
   `property` (Hypothesis), `integration` (PostgreSQL), `spark`, or
@@ -122,6 +123,15 @@ Use a throwaway database all the same.
   when fewer than 90% of the tested mutants are killed. A mutant that times
   out counts as not killed. The survivors are listed in
   `reports/mutation-survivors.txt`.
+- `make rust-mutation` runs cargo-mutants on the crate's library, and fails
+  under the same 90%. A mutant that does not build is not tested. The binary,
+  `src/main.rs`, is left out: `tests/cli.rs` tests it. The tests read
+  `../spec`, which cargo-mutants would not copy, so the target copies `rust/`
+  and `spec/` to `reports/rust-mutation/tree` and mutates the copy: your files
+  are never changed. The missed mutants are listed in
+  `reports/rust-mutation/mutants.out/missed.txt`. A run takes about 30 minutes
+  on 12 cores, and needs cargo-mutants and cargo-nextest, at the versions
+  that `nightly.yml` pins (`cargo install --locked cargo-mutants@<version>`).
 - **Nightly** (`nightly.yml`, every night and by hand) runs what is too slow
   for a pull request:
   - the whole CI suite, with Spark on every Python of each Spark line;
@@ -132,9 +142,10 @@ Use a throwaway database all the same.
     to the Python core and the Rust command line, and requires the same
     output in every format. When they differ, the smallest input is uploaded
     in the shape of a fixture, ready to become one;
-  - `make mutation`. When it fails, nightly opens an issue, or comments on the
-    one already open. Run the workflow by hand with `dry-run` to rehearse that
-    issue: it finds the issue and prints what it would write;
+  - `make mutation`, and `make rust-mutation` in 4 shards, which a last job
+    scores together. When either fails, nightly opens its issue, or comments
+    on the one already open. Run the workflow by hand with `dry-run` to
+    rehearse those issues: it finds each issue and prints what it would write;
   - `make links`, which requests every external link in the docs.
 - **Canary** (`canary.yml`, every Monday and by hand) runs the tests against
   releases that CI does not test yet, and never gates a pull request:

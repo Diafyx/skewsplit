@@ -38,7 +38,7 @@ CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
 	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance py-conformance \
-	rust-conformance differential property mutation links bench-core bench rust-lint rust-test rust-coverage \
+	rust-conformance differential property mutation rust-mutation links bench-core bench rust-lint rust-test rust-coverage \
 	rust-fuzz rust-msrv clean
 
 check: lint py-unit coverage rust-test rust-coverage packaging docs
@@ -241,6 +241,28 @@ mutation:
 	cp python/mutants/mutmut-cicd-stats.json $(REPORTS)/mutation.json
 	$(MUTMUT) results > $(CURDIR)/$(REPORTS)/mutation-survivors.txt
 	$(SCRIPT) scripts/mutation_score.py --min $(MUTATION_MIN) $(REPORTS)/mutation.json
+
+# Mutation testing of the crate's library with cargo-mutants and
+# cargo-nextest, which nightly.yml runs in 4 shards. The binary, src/main.rs,
+# is the command line that tests/cli.rs tests, and is not mutated.
+#
+# cargo-mutants copies only the crate, and the tests read ../spec, so the files
+# of rust/ and spec/ that git tracks or would add are copied to
+# $(RUST_MUTANTS)/tree and mutated in place there: the working tree is never
+# changed. SHARD=k/n tests the kth of n shares, from 0, and leaves the score
+# to the caller. cargo-mutants exits 2 when a mutant is missed and 3 when one
+# times out, which the score counts; it fails the target on anything else,
+# such as tests that fail before any mutant.
+RUST_MUTANTS := $(REPORTS)/rust-mutation
+rust-mutation:
+	rm -rf $(RUST_MUTANTS)
+	mkdir -p $(RUST_MUTANTS)/tree
+	git ls-files -z --cached --others --exclude-standard rust spec | tar --null -T - -cf - | tar -xf - -C $(RUST_MUTANTS)/tree
+	cd $(RUST_MUTANTS)/tree/rust && cargo mutants --in-place --exclude src/main.rs --test-tool nextest \
+		--cargo-arg=--locked $(if $(SHARD),--shard $(SHARD)) --output $(CURDIR)/$(RUST_MUTANTS) \
+		|| { status=$$?; test $$status -eq 2 -o $$status -eq 3; }
+	$(if $(SHARD),,$(SCRIPT) scripts/mutation_score.py --tool cargo-mutants --min $(MUTATION_MIN) \
+		$(RUST_MUTANTS)/mutants.out/outcomes.json)
 
 # Every link in every Markdown file, external ones included, which nightly.yml
 # runs. The docs target requests only those in the files a change touches.

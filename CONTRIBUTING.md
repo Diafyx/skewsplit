@@ -51,6 +51,7 @@ make check
 | `make rust-fuzz` | The array text reader's fuzz target, for `FUZZ_SECONDS` (60), with Rust nightly and cargo-fuzz |
 | `make differential` | The Rust command line against the Python core on random inputs, after building the binary. `SEED=N` repeats a run |
 | `make rust-mutation` | cargo-mutants on the crate's library, with cargo-nextest. `SHARD=k/n` tests one share of the mutants |
+| `make rust-package` | The crate as crates.io would receive it: `cargo publish --dry-run`, then a check of its files. `make packaging` runs it |
 
 To run the same checks before each commit, install the hooks with
 `uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and
@@ -281,10 +282,42 @@ creates labels by hand.
   Windows, then PyPI after approval. The distributions, the SBOM and the
   attestations are attached to the GitHub Release, which stays a draft until
   then.
+- Merging the Rust release pull request runs the same workflow: the full CI
+  suite, `make rust-package` from a clean checkout, the command line built and
+  run on Linux (x86_64 and arm64, linked statically with musl), macOS (Intel
+  and Apple silicon) and Windows, and build provenance attestations for the
+  binaries. Then crates.io after approval, in the `crates-io` environment. The
+  binaries and their attestations are attached to the GitHub Release, which
+  stays a draft until then.
 - To rehearse a release, run the Release workflow from the Actions tab with
-  "dry-run" on. It publishes a dev version to TestPyPI only.
+  "dry-run" on. It publishes a dev version to TestPyPI only, and runs the
+  crate's jobs up to the attestations without publishing anything.
 - The changelogs are generated from pull request titles. Do not edit them by
   hand; they are left out of the Markdown and spelling checks.
+
+### Publishing the crate
+
+crates.io trusts a workflow only for a crate that already exists, so the first
+release publishes with an API token. Before it, an owner of the crate on
+crates.io creates a token with the scopes `publish-new` and `publish-update`
+for the crate `skewsplit` only, and an expiry date. It is saved as the secret
+`CARGO_REGISTRY_TOKEN` of the `crates-io` environment, which needs a
+maintainer's approval and accepts only `main`.
+
+After the first release, switch to Trusted Publishing:
+
+1. On crates.io, in the crate's settings, add a trusted publisher: GitHub, the
+   repository `Diafyx/skewsplit`, the workflow `release.yml` and the
+   environment `crates-io`.
+2. Allow `rust-lang/crates-io-auth-action` in Settings > Actions > General, and
+   add it to `ALLOWED` in `python/tests/unit/test_workflow_actions.py`.
+3. In the `publish-crates-io` job of `release.yml`, grant `id-token: write` and
+   add a step with `id: auth` before Publish that uses
+   `rust-lang/crates-io-auth-action`, pinned to a commit SHA. Set
+   `CARGO_REGISTRY_TOKEN` to `${{ steps.auth.outputs.token }}`, and remove the
+   zizmor ignore on `cargo publish`.
+4. After the next release has published that way, delete the secret
+   `CARGO_REGISTRY_TOKEN` and revoke the token on crates.io.
 
 ## Supported versions
 

@@ -35,8 +35,12 @@ ZIZMOR_FLAGS ?= --offline
 RUST_MSRV := $(shell sed -n 's/^rust-version = "\(.*\)"$$/\1/p' rust/Cargo.toml)
 RUST_TOOLCHAIN ?=
 CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
+RUST_VERSION := $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' rust/Cargo.toml)
+# --allow-dirty lets make rust-package run before a commit. release.yml clears
+# it, so a release is packaged from a clean checkout, as cargo publish needs.
+RUST_PACKAGE_FLAGS ?= --allow-dirty
 
-.PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
+.PHONY: check check-all lint check-filters py-unit coverage packaging rust-package docs py-lowest \
 	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance py-conformance \
 	rust-conformance differential property mutation rust-mutation links bench-core bench rust-lint rust-test rust-coverage \
 	rust-fuzz rust-msrv clean
@@ -153,10 +157,9 @@ coverage:
 	$(UV_RUN) diff-cover $(REPORTS)/coverage.xml --compare-branch=$(COMPARE) --fail-under=100
 
 # Build the sdist and wheel, check their metadata and contents, then install
-# the wheel into a clean environment and run it. Then package the crate as
-# crates.io would receive it, list its files, and build it from the package.
-# --allow-dirty lets this run before a commit; publishing never passes it.
-packaging:
+# the wheel into a clean environment and run it. The crate first, with
+# make rust-package.
+packaging: rust-package
 	rm -rf dist .venv-smoke
 	uv build --package skewsplit --out-dir dist
 	$(UV_RUN) twine check --strict dist/*
@@ -167,8 +170,13 @@ packaging:
 	.venv-smoke/bin/skewsplit --version
 	.venv-smoke/bin/python -c 'import skewsplit; print(skewsplit.__version__)'
 	rm -rf .venv-smoke
-	$(CARGO) package --locked --allow-dirty --list
-	$(CARGO) package --locked --allow-dirty
+
+# The crate as crates.io would receive it: cargo publish --dry-run packages it,
+# builds it from the package alone and stops before the upload. Then
+# scripts/check_crate.py lists the files and checks them against include.
+rust-package:
+	$(CARGO) publish --dry-run --locked $(RUST_PACKAGE_FLAGS)
+	$(SCRIPT) scripts/check_crate.py rust/target/package/skewsplit-$(RUST_VERSION).crate
 
 # Markdown lint, the >>> examples in every Markdown file (pytest exits 5 when a
 # run finds no examples, which is fine), relative links everywhere, and

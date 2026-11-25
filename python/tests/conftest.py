@@ -25,7 +25,7 @@ import pytest
 from hypothesis import settings
 
 TESTS = Path(__file__).parent
-KINDS = ("unit", "property", "integration", "spark")
+KINDS = ("unit", "property", "integration", "spark", "differential")
 
 settings.register_profile("dev", max_examples=100, deadline=None)
 settings.register_profile("ci", max_examples=1000, deadline=None, print_blob=True)

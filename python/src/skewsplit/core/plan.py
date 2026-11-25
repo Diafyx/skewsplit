@@ -309,8 +309,20 @@ def _sample_line(source: object) -> list[str]:
     line = f"from a sample of {rows} rows"
     elapsed = source.get("planning_ms")
     if isinstance(elapsed, (int, float)) and not isinstance(elapsed, bool):
-        line += f", planned in {elapsed:.3f} ms"
+        line += f", planned in {_three_decimals(elapsed)} ms"
     return [line]
+
+
+def _three_decimals(number: float) -> str:
+    """Format ``number`` with ``.3f``, which converts an integer to a float first.
+
+    An integer too large for a float is an infinity, as the conversion would
+    round it, instead of an ``OverflowError``.
+    """
+    try:
+        return f"{number:.3f}"
+    except OverflowError:
+        return "inf" if number > 0 else "-inf"
 
 
 def _source_warnings(source: object) -> list[tuple[str, str]]:

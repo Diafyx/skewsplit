@@ -29,6 +29,7 @@ make mutation    # mutmut on the core (about five minutes; nightly runs it)
 make rust-test   # the crate's tests (cargo-nextest) and doc tests
 make rust-coverage  # the crate's coverage gates (cargo-llvm-cov)
 make rust-fuzz   # the array text fuzz target (needs Rust nightly and cargo-fuzz)
+make differential  # the Rust command line against Python on random inputs (nightly runs it)
 uv run --frozen pytest python/tests/unit/test_version.py   # one file
 ```
 
@@ -54,7 +55,7 @@ benchmark (`make bench`) run in CI only. Do not start Docker or install a databa
   fuzz targets in `rust/fuzz` are a crate of their own, with libfuzzer-sys.
 - The package has no runtime dependencies.
 - Tests go in `python/tests/<kind>/` (`unit`, `property`, `integration`,
-  `spark`); the folder sets the marker.
+  `spark`, `differential`); the folder sets the marker.
 - A new folder, tool or supported version updates `.github/filters.yml`, the
   CI matrices and the gate in the same pull request.
 - Commits use Conventional Commits, are signed, and carry no attribution

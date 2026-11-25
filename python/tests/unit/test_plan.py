@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -125,12 +126,28 @@ def test_a_source_without_a_list_of_warnings_adds_none(source: object) -> None:
         ),
         ({"sample_rows": 7, "planning_ms": True}, "from a sample of 7 rows"),
         ({"sample_rows": 7, "planning_ms": "1"}, "from a sample of 7 rows"),
+        # An integer too large for a float is an infinity, as in the crate.
+        ({"sample_rows": 1, "planning_ms": 10**400}, "from a sample of 1 rows, planned in inf ms"),
+        (
+            {"sample_rows": 1, "planning_ms": -(10**400)},
+            "from a sample of 1 rows, planned in -inf ms",
+        ),
     ],
 )
 def test_the_report_of_a_plan_from_a_sample_says_how_big_it_was(source: object, line: str) -> None:
     lines = replace(plan(SECTION_1), source=source).report.splitlines()
     assert lines[1] == line
     assert lines[2].endswith("  predicate")
+
+
+def test_an_integer_is_an_infinity_from_where_a_float_rounds_to_one() -> None:
+    # The largest float is 2**1024 - 2**971. Halfway to 2**1024, a tie,
+    # rounds to even: the infinity.
+    largest = f"{sys.float_info.max:.3f}"
+    for number, shown in ((2**1024 - 2**970 - 1, largest), (2**1024 - 2**970, "inf")):
+        source = {"sample_rows": 1, "planning_ms": number}
+        lines = replace(plan(SECTION_1), source=source).report.splitlines()
+        assert lines[1] == f"from a sample of 1 rows, planned in {shown} ms"
 
 
 @pytest.mark.parametrize(

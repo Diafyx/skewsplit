@@ -49,6 +49,7 @@ make check
 | `make rust-test RUST_TOOLCHAIN=msrv` | The same with the minimum supported Rust version, once `rustup toolchain install` has installed it |
 | `make rust-coverage` | The crate's coverage gates |
 | `make rust-fuzz` | The array text reader's fuzz target, for `FUZZ_SECONDS` (60), with Rust nightly and cargo-fuzz |
+| `make differential` | The Rust command line against the Python core on random inputs, after building the binary. `SEED=N` repeats a run |
 
 To run the same checks before each commit, install the hooks with
 `uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and
@@ -86,9 +87,10 @@ Use a throwaway database all the same.
 | Mutation score of the core (nightly) | At least 90% of mutants killed |
 
 - Tests live in `python/tests/<kind>/`. The folder sets the kind: `unit`,
-  `property` (Hypothesis), `integration` (PostgreSQL) or `spark`. A test
-  outside these folders fails collection, so no test can be skipped by a
-  missing marker. A plain `pytest` runs `unit` and `property`.
+  `property` (Hypothesis), `integration` (PostgreSQL), `spark`, or
+  `differential` (the Rust binary, see `make differential`). A test outside
+  these folders fails collection, so no test can be skipped by a missing
+  marker. A plain `pytest` runs `unit` and `property`.
 - Test order is random (`pytest-randomly`), so tests must not depend on each
   other.
 - Rust tests live next to the code they test (`#[cfg(test)]` modules) or in
@@ -125,6 +127,11 @@ Use a throwaway database all the same.
   - the whole CI suite, with Spark on every Python of each Spark line;
   - `make property conformance` with the `nightly` profile, and the property
     tests of each parser with `fuzz`;
+  - `make differential` with the `nightly` profile and the run's id as `SEED`.
+    It gives random inputs, most of them valid and some that break one rule,
+    to the Python core and the Rust command line, and requires the same
+    output in every format. When they differ, the smallest input is uploaded
+    in the shape of a fixture, ready to become one;
   - `make mutation`. When it fails, nightly opens an issue, or comments on the
     one already open. Run the workflow by hand with `dry-run` to rehearse that
     issue: it finds the issue and prints what it would write;

@@ -1,8 +1,9 @@
 name: CodeQL
 
-# CodeQL advanced setup for Python and for the workflows themselves. GitHub's
-# default setup must stay off: code scanning rejects results from an advanced
-# setup while the default setup is on.
+# CodeQL advanced setup for Python, Rust and the workflows themselves. None of
+# them is built: CodeQL reads the source, and for Rust the crate's Cargo.toml.
+# GitHub's default setup must stay off: code scanning rejects results from an
+# advanced setup while the default setup is on.
 on:
   pull_request:
   push:
@@ -27,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions]
+        language: [python, rust, actions]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

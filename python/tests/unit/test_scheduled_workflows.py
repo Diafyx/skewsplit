@@ -32,12 +32,16 @@ SCHEDULED = [
             "differential",
             "mutation",
             "mutation-issue",
+            "rust-mutation",
+            "rust-mutation-score",
+            "rust-mutation-issue",
             "bench",
             "bench-issue",
             "links",
         },
         {
             "mutation-issue": ["type/test", "area/core", "status/triage"],
+            "rust-mutation-issue": ["type/test", "area/rust", "status/triage"],
             "bench-issue": ["type/perf", "area/bench", "status/triage"],
         },
     ),
@@ -150,3 +154,11 @@ def test_the_postgres_canary_refuses_an_image_that_is_not_pinned() -> None:
     assert "services:" not in job
     check = '[[ "$IMAGE" =~ ^postgres:${POSTGRES}(beta|rc)[0-9]+@sha256:[0-9a-f]{64}$ ]]'
     assert job.index(check) < job.index("docker run ")
+
+
+def test_the_mutation_of_the_crate_uses_the_nextest_of_ci() -> None:
+    version = re.compile(r"^ +NEXTEST_VERSION: (\S+)$", re.MULTILINE)
+    nightly = version.findall((WORKFLOWS / "nightly.yml").read_text(encoding="utf-8"))
+    ci = version.findall((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    assert len(nightly) == len(ci) == 1
+    assert nightly == ci

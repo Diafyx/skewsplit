@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mutation_score import main, score, summary
+from mutation_score import CARGO_MUTANTS, main, score, summary
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,3 +101,54 @@ def test_main_needs_every_count(tmp_path: Path) -> None:
     del stats["timeout"]
     with pytest.raises(KeyError, match="timeout"):
         main(["--min", "90", str(write(tmp_path, stats))])
+
+
+# The counts in the outcomes.json of cargo-mutants.
+OUTCOMES = {
+    "total_mutants": 260,
+    "missed": 20,
+    "caught": 230,
+    "timeout": 2,
+    "unviable": 8,
+    "success": 0,
+}
+
+
+def outcomes(tmp_path: Path, name: str, **changes: int) -> str:
+    """Write an outcomes.json, which also has the version and each mutant's outcome."""
+    path = tmp_path / f"{name}.json"
+    data = {**OUTCOMES, **changes, "cargo_mutants_version": "27.1.0", "outcomes": []}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return str(path)
+
+
+def test_unviable_mutants_of_the_crate_are_not_tested() -> None:
+    # 230 caught of 252 tested: a timeout counts as not killed.
+    assert score(OUTCOMES, CARGO_MUTANTS) == pytest.approx(100 * 230 / 252)
+    assert score({**OUTCOMES, "unviable": 260}, CARGO_MUTANTS) is None
+
+
+def test_the_summary_of_the_crate_lists_its_counts() -> None:
+    text = summary(OUTCOMES, 91.3, 90, CARGO_MUTANTS)
+    assert text.startswith("## Mutation testing of the crate\n")
+    assert "| caught | 230 |\n| missed | 20 |\n| timeout | 2 |\n| unviable | 8 |" in text
+    assert text.endswith("| total | 260 |\n")
+
+
+def test_main_adds_up_the_shards_of_a_run(tmp_path: Path, github: tuple[Path, Path]) -> None:
+    output, step_summary = github
+    counts = {"total_mutants": 100, "timeout": 0, "unviable": 0}
+    shards = [
+        outcomes(tmp_path, "shard-0", caught=95, missed=5, **counts),
+        outcomes(tmp_path, "shard-1", caught=80, missed=20, **counts),
+    ]
+    # 175 of 200: neither shard alone has that score.
+    assert main(["--tool", "cargo-mutants", "--min", "90", *shards]) == 1
+    assert output.read_text(encoding="utf-8") == "score=87.5\n"
+    assert "| total | 200 |" in step_summary.read_text(encoding="utf-8")
+    assert main(["--tool", "cargo-mutants", "--min", "87.5", *shards]) == 0
+
+
+def test_main_reads_mutmut_by_default(tmp_path: Path) -> None:
+    with pytest.raises(KeyError, match="killed"):
+        main(["--min", "90", outcomes(tmp_path, "outcomes")])

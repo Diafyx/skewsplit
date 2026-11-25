@@ -29,6 +29,7 @@ SCHEDULED = [
             "hypothesis",
             "fuzz",
             "rust-fuzz",
+            "differential",
             "mutation",
             "mutation-issue",
             "bench",

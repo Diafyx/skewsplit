@@ -182,6 +182,16 @@ fn the_report_of_a_plan_from_a_sample_says_how_big_it_was() {
         assert_eq!(lines[1], line);
         assert!(lines[2].ends_with("  predicate"));
     }
+    // An integer too large for a float is an infinity, as in Python.
+    let huge = format!("1{}", "0".repeat(400));
+    for (sign, shown) in [("", "inf"), ("-", "-inf")] {
+        let source = format!(r#"{{"sample_rows": 1, "planning_ms": {sign}{huge}}}"#);
+        let lines = report_lines(&with_source(&source));
+        assert_eq!(
+            lines[1],
+            format!("from a sample of 1 rows, planned in {shown} ms")
+        );
+    }
 }
 
 #[test]

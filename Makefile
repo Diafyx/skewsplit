@@ -38,7 +38,7 @@ CARGO := cd rust && cargo$(if $(filter msrv,$(RUST_TOOLCHAIN)), +$(RUST_MSRV))
 
 .PHONY: check check-all lint check-filters py-unit coverage packaging docs py-lowest \
 	py-integration spark-e2e pgjdbc pr-size pr-hygiene check-fixtures conformance py-conformance \
-	rust-conformance property mutation links bench-core bench rust-lint rust-test rust-coverage \
+	rust-conformance differential property mutation links bench-core bench rust-lint rust-test rust-coverage \
 	rust-fuzz rust-msrv clean
 
 check: lint py-unit coverage rust-test rust-coverage packaging docs
@@ -203,6 +203,19 @@ rust-conformance:
 	$(CARGO) nextest run --locked --profile ci -E 'binary(fixtures) | binary(properties)'
 	cp rust/target/nextest/ci/junit.xml $(REPORTS)/junit-conformance-rust.xml
 rust-conformance: export PROPTEST_PROFILE := $(HYPOTHESIS_PROFILE)
+
+# The Rust command line against the Python core on random inputs
+# (python/tests/differential), with $(HYPOTHESIS_PROFILE). It builds the
+# release binary first. SEED=N gives the run a seed, so that nightly.yml's run
+# can be repeated with the seed in its log. When the outputs differ, the
+# smallest input is written to $(REPORTS)/differential/difference.json.
+differential:
+	mkdir -p $(REPORTS)
+	rm -f $(REPORTS)/differential/difference.json
+	$(CARGO) build --locked --release --bin skewsplit
+	SKEWSPLIT_RUST_BIN="$(CURDIR)/rust/target/release/skewsplit" HYPOTHESIS_PROFILE=$(HYPOTHESIS_PROFILE) \
+		$(UV_RUN) pytest -m differential --junitxml=$(REPORTS)/junit-differential.xml \
+		$(if $(SEED),--hypothesis-seed=$(SEED)) python/tests/differential
 
 # The property tests in PROPERTY_TESTS with $(HYPOTHESIS_PROFILE). nightly.yml
 # runs all of them with the nightly profile, and each parser's with fuzz.

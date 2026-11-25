@@ -131,6 +131,7 @@ markers = [
   "conformance: golden fixtures and spec invariants (also run by make conformance)",
   "integration: needs PostgreSQL (CI only)",
   "spark: needs Spark and Java (CI only)",
+  "differential: the Rust command line against the Python core (needs the binary: make differential)",
   "slow: takes more than a few seconds",
 ]
 filterwarnings = ["error"]

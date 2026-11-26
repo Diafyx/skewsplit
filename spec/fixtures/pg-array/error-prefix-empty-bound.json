@@ -1,0 +1,13 @@
+{
+  "description": "Neither bound may be empty.",
+  "input": {
+    "text": "[1:]={1}",
+    "type": "int4"
+  },
+  "expected": {
+    "spec_version": "1.1",
+    "error": {
+      "code": "invalid_array"
+    }
+  }
+}

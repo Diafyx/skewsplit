@@ -60,6 +60,13 @@ fn array_text_splits_into_its_elements() {
 fn bad_array_text_is_an_invalid_array_that_says_why() {
     let cases = [
         ("[1:1]{1}", "'[1:1]{1}'", "an array starts with '{'"),
+        // A bound starts with a digit, or with '-' and a digit. Without these,
+        // only the property tests reach that check, when they happen to.
+        ("[a:1]={1}", "'[a:1]={1}'", "an array starts with '{'"),
+        ("[1:b]={1}", "'[1:b]={1}'", "an array starts with '{'"),
+        ("[:1]={1}", "'[:1]={1}'", "an array starts with '{'"),
+        ("[1:]={1}", "'[1:]={1}'", "an array starts with '{'"),
+        ("[-:1]={1}", "'[-:1]={1}'", "an array starts with '{'"),
         (
             r#"{"a"b}"#,
             r#"'{"a"b}'"#,

@@ -95,10 +95,14 @@ rust-test:
 # $(COMPARE). Stable Rust measures no branch coverage yet. The core gate counts
 # uncovered lines, which must be none: a percentage of a library with no lines
 # yet would be 0 of 0, which cargo-llvm-cov fails.
+#
+# The core gate leaves out the property tests (tests/properties.rs): their
+# inputs are random, so a line that only they reach would pass or fail by
+# chance. Each run removes the coverage data of the one before.
 rust-coverage:
 	mkdir -p $(REPORTS)
+	$(CARGO) llvm-cov nextest --locked --profile ci -E 'not binary(properties)' --ignore-filename-regex 'src/main\.rs$$' --fail-uncovered-lines 0
 	$(CARGO) llvm-cov nextest --locked --profile ci --lcov --output-path ../$(REPORTS)/rust.lcov
-	$(CARGO) llvm-cov report --ignore-filename-regex 'src/main\.rs$$' --fail-uncovered-lines 0
 	$(CARGO) llvm-cov report --fail-under-lines 95
 	$(UV_RUN) diff-cover $(REPORTS)/rust.lcov --compare-branch=$(COMPARE) --fail-under=100
 

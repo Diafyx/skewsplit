@@ -81,7 +81,9 @@ They don't apply to the doc tests, which nextest doesn't run.
 The property tests in `tests/properties.rs` run 100 cases each. Set
 `PROPTEST_PROFILE` to `ci` for 1000, `nightly` for 20000 or `fuzz` for 100000.
 A failing case is shrunk and printed, and its seed is saved in
-`tests/properties.proptest-regressions`, to commit with the fix.
+`tests/properties.proptest-regressions`, to commit with the fix. Their inputs
+are random, so the gate of 100% of the library's lines counts the other tests
+only: a line that only a property test reaches needs a test of its own.
 
 `tests/cli/python-outputs.json` holds what the Python command line prints for
 the planner inputs of the fixtures, in each format, and `tests/fixtures.rs`

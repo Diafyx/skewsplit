@@ -3,11 +3,15 @@
 Usage: python bench/bench_compare.py BASELINE_JSON RESULTS_JSON BODY_MD
        python bench/bench_compare.py --baseline RESULTS_JSON BASELINE_JSON
 
+Shared runners differ in speed from one run to the next, so seconds from two
+runs do not compare. Each skewsplit method's median max task time is taken as
+a share of REFERENCE's in the same run, a read that does not use skewsplit,
+and that share is compared with the baseline's.
+
 The first form writes BODY_MD, the text of the tracking issue, and sets
-``changed=true`` in ``$GITHUB_OUTPUT`` when a median max task time of a
-skewsplit method moved by more than THRESHOLD percent, either way. The second
-writes the baseline from a run: the README's headline run. Standard library
-only.
+``changed=true`` in ``$GITHUB_OUTPUT`` when a share moved by more than
+THRESHOLD percent, either way. The second writes the baseline from a run: the
+README's headline run. Standard library only.
 """
 
 from __future__ import annotations
@@ -23,13 +27,15 @@ from bench_report import summarise
 # A change bigger than this, in percent, opens the tracking issue.
 THRESHOLD = 10
 SKEWSPLIT_METHODS = ("skewsplit statistics", "skewsplit sample")
+# The read that skewsplit's times are a share of: Spark's own bounds.
+REFERENCE = "default bounds"
 
 
 def max_tasks(report: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """The median max task time, in seconds, of each skewsplit method on each column."""
+    """The median max task time, in seconds, of REFERENCE and skewsplit on each column."""
     found: dict[str, dict[str, float]] = {}
     for column in report["columns"]:
-        for method in SKEWSPLIT_METHODS:
+        for method in (REFERENCE, *SKEWSPLIT_METHODS):
             runs = [r for r in report["results"] if r["column"] == column and r["method"] == method]
             if runs:
                 found.setdefault(column, {})[method] = summarise(runs, report["rows"])["max_task"]
@@ -47,7 +53,7 @@ def baseline(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def compare(base: dict[str, Any], report: dict[str, Any]) -> tuple[bool, str]:
-    """Whether a max task time moved by more than THRESHOLD percent, and the report as Markdown."""
+    """Whether a share moved by more than THRESHOLD percent, and the report as Markdown."""
     lines = [
         "| Column | Method | Baseline | This run | Change |",
         "|--------|--------|---------:|---------:|-------:|",
@@ -55,25 +61,35 @@ def compare(base: dict[str, Any], report: dict[str, Any]) -> tuple[bool, str]:
     changed = False
     now = max_tasks(report)
     for column, methods in base["max_task_seconds"].items():
+        reference = methods[REFERENCE]
+        current = now.get(column, {}).get(REFERENCE)
+        shown = "missing" if current is None else f"{current:.1f} s"
+        lines.append(f"| `{column}` | {REFERENCE} | {reference:.1f} s | {shown} | |")
         for method, before in methods.items():
+            if method == REFERENCE:
+                continue
             after = now.get(column, {}).get(method)
-            if after is None:
+            if after is None or current is None:
                 changed = True
                 lines.append(f"| `{column}` | {method} | {before:.1f} s | missing | |")
                 continue
-            # The times are whole milliseconds; rounding keeps 4.4 s against 4.0 s at 10%.
-            change = round((after - before) / before * 100, 6)
+            share_before, share_after = before / reference, after / current
+            # The times are whole milliseconds; rounding keeps a share of 0.55 against 0.5 at 10%.
+            change = round((share_after - share_before) / share_before * 100, 6)
             moved = abs(change) > THRESHOLD
             changed = changed or moved
             mark = " **over the threshold**" if moved else ""
             lines.append(
-                f"| `{column}` | {method} | {before:.1f} s | {after:.1f} s | {change:+.0f}%{mark} |"
+                f"| `{column}` | {method} | {before:.1f} s, {share_before:.1%}"
+                f" | {after:.1f} s, {share_after:.1%} | {change:+.0f}%{mark} |"
             )
     same = (base["rows"], base["partitions"]) == (report["rows"], report["partitions"])
     intro = [
         (
-            f"skewsplit's median max task time in the nightly benchmark, against the baseline"
-            f" from {base['run_url'] or 'the committed baseline'}. A change of more than"
+            f"skewsplit's median max task time in the nightly benchmark, as a share of"
+            f" {REFERENCE}' in the same run, against the baseline from"
+            f" {base['run_url'] or 'the committed baseline'}. Runners differ in speed, so the"
+            f" share is compared rather than the seconds. A change of the share by more than"
             f" {THRESHOLD}% either way opens this issue."
         ),
         "",

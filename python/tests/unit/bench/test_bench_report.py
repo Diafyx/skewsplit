@@ -158,6 +158,11 @@ def test_render() -> None:
     assert "skewsplit statistics against hash-mod: +40% max task time, +60% job time" in text
 
 
+def test_render_names_the_processor() -> None:
+    report = {**REPORT, "environment": {**REPORT["environment"], "cpu": "AMD EPYC 7763"}}
+    assert "(ubuntu24 20261116.1, 4 CPUs, AMD EPYC 7763, 16 GB)" in render(report)
+
+
 def test_render_without_a_run() -> None:
     assert "From [this run" not in render({**REPORT, "run_url": None})
 

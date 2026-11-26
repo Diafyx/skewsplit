@@ -167,6 +167,20 @@ impl Codec {
         self.max_ordinal
     }
 
+    /// The type's special values, which have no ordinal (spec sections 13
+    /// and 14): `infinity` and `-infinity` for dates and timestamps, and
+    /// `NaN`, `Infinity` and `-Infinity` for `numeric`. The integer types
+    /// have none. A conversion leaves them out of the estimate, although the
+    /// predicates still cover their rows.
+    #[must_use]
+    pub fn special_values(&self) -> &'static [&'static str] {
+        match self.type_name {
+            "numeric" => &["NaN", "Infinity", "-Infinity"],
+            "date" | "timestamp" | "timestamptz" => &["infinity", "-infinity"],
+            _ => &[],
+        }
+    }
+
     /// The scale of a `numeric` codec, or `None` for every other type.
     #[must_use]
     pub fn scale(&self) -> Option<u32> {

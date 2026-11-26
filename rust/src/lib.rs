@@ -7,8 +7,9 @@
 //! far the library has the value codecs ([`codecs`]), JSON as Python reads
 //! and writes it ([`json`]), the planner input checks ([`inputs`]), the
 //! range planner ([`planner`]) and the hash planner ([`hashing`]) with their
-//! plans and the plans' reports and snippets ([`plan`]), and PostgreSQL's
-//! array text ([`pgarray`]).
+//! plans and the plans' reports and snippets ([`plan`]), PostgreSQL's array
+//! text ([`pgarray`]), and the planner input from a sample of the column
+//! ([`sample`]).
 //!
 //! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
 //! repository, and pass the same golden fixtures.
@@ -27,6 +28,7 @@ pub mod json;
 pub mod pgarray;
 pub mod plan;
 pub mod planner;
+pub mod sample;
 
 pub use error::{ErrorCode, SpecError};
 

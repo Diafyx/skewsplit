@@ -1,6 +1,7 @@
 //! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
-//! every hash fixture in `spec/fixtures/hash/` (section 16), every array text
-//! fixture in `spec/fixtures/pg-array/` (section 12), and
+//! every hash fixture in `spec/fixtures/hash/` (section 16), every sample
+//! fixture in `spec/fixtures/sample/` (section 14), every array text fixture
+//! in `spec/fixtures/pg-array/` (section 12), and
 //! the command line's output for the planner inputs of the fixtures, which
 //! must be the Python command line's.
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
@@ -23,6 +24,7 @@ use skewsplit::json::{self, Object, Value};
 use skewsplit::pgarray::parse_values;
 use skewsplit::plan::error_value;
 use skewsplit::planner::plan;
+use skewsplit::sample::from_sample;
 
 struct Fixture {
     name: String,
@@ -31,15 +33,14 @@ struct Fixture {
 }
 
 /// The fixture folders this file runs, besides the planner fixtures at the top.
-const RUN: [&str; 2] = ["hash", "pg-array"];
+const RUN: [&str; 3] = ["hash", "pg-array", "sample"];
 
 /// The fixture folders this crate doesn't run yet, because it hasn't ported
 /// what they test. A new folder fails
 /// `every_fixture_folder_is_run_or_not_ported_yet` until it is run here or
 /// listed.
-const NOT_PORTED_YET: [&str; 2] = [
+const NOT_PORTED_YET: [&str; 1] = [
     "pg-stats", // converting pg_stats, spec section 13
-    "sample",   // converting a sample, spec section 14
 ];
 
 fn fixture_folder() -> PathBuf {
@@ -166,6 +167,52 @@ fn every_hash_fixture_plans_byte_for_byte() {
     assert!(
         plans >= 10 && errors >= 15,
         "{plans} plans, {errors} errors"
+    );
+}
+
+/// A conversion's result as its fixtures write it: `{"spec_version": ...,
+/// "input": {...}}` without the messages of the warnings in the input's
+/// `source`, or the error without its message.
+fn converted(result: Result<Value, SpecError>) -> Value {
+    let mut input = match result {
+        Ok(input) => input,
+        Err(error) => return without_messages(error_value(&error)),
+    };
+    if let Value::Object(fields) = &mut input
+        && let Some(source) = fields.remove("source")
+    {
+        fields.insert("source", without_messages(source));
+    }
+    let mut out = Object::new();
+    out.insert("spec_version", Value::from(SPEC_VERSION));
+    out.insert("input", input);
+    Value::Object(out)
+}
+
+#[test]
+fn every_sample_fixture_converts_byte_for_byte() {
+    let fixtures = fixtures("sample");
+    assert!(fixtures.len() >= 30);
+    let (mut inputs, mut errors) = (0, 0);
+    for fixture in fixtures {
+        let actual = converted(from_sample(&fixture.input));
+        if actual.get("error").is_some() {
+            errors += 1;
+        } else {
+            inputs += 1;
+        }
+        for indent in [None, Some(2)] {
+            assert_eq!(
+                actual.to_json(indent).unwrap(),
+                fixture.expected.to_json(indent).unwrap(),
+                "{}",
+                fixture.name
+            );
+        }
+    }
+    assert!(
+        inputs >= 10 && errors >= 20,
+        "{inputs} inputs, {errors} errors"
     );
 }
 

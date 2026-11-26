@@ -1,7 +1,9 @@
 //! Invariants of every plan (spec sections 4 to 8) on random valid inputs, as
 //! `python/tests/property/test_planner_invariants.py` checks them with
-//! Hypothesis, and of reading array text (spec section 12), as
-//! `python/tests/property/test_pgarray_properties.py` does.
+//! Hypothesis, of reading array text (spec section 12), as
+//! `python/tests/property/test_pgarray_properties.py` does, and of hash
+//! predicates (section 16), as `python/tests/property/test_hash_properties.py`
+//! does.
 //!
 //! `PROPTEST_PROFILE` sets the number of cases of each test, as
 //! `HYPOTHESIS_PROFILE` sets the examples for Python: `dev` (the default) 100,
@@ -21,6 +23,7 @@ use proptest::sample::{Index, select};
 use proptest::test_runner::FileFailurePersistence;
 use skewsplit::codecs::{Codec, codec_for};
 use skewsplit::error::ErrorCode;
+use skewsplit::hashing::hash_plan;
 use skewsplit::json::{Object, Value};
 use skewsplit::pgarray::{parse_array, parse_values};
 use skewsplit::plan::{Kind, Op, Plan, Predicate, WarningCode};
@@ -525,5 +528,66 @@ proptest! {
                 error
             ),
         }
+    }
+}
+
+/// A total of rows up to 2^63 - 1, and the NULL rows among them: the second
+/// range depends on the first draw, which `prop_flat_map` allows.
+fn hash_rows() -> impl Strategy<Value = (i128, i128)> {
+    (0..=i128::from(i64::MAX)).prop_flat_map(|rows| (Just(rows), 0..=rows))
+}
+
+/// A hash plan of `rows` rows, `null_rows` of them NULL, in `n` partitions.
+fn hash_input(n: i128, null_rows: i128, rows: i128) -> Plan {
+    hash_plan(&object([
+        ("column", Value::from("c")),
+        ("type", Value::from("uuid")),
+        ("partitions", Value::from(n)),
+        ("null_rows", Value::from(null_rows)),
+        ("non_null_rows", Value::from(rows - null_rows)),
+    ]))
+    .unwrap()
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    // PostgreSQL's `%` truncates toward zero, as Rust's does on integers, so
+    // the remainder of a negative hash is negative. The predicates' expression
+    // `((h % N) + N) % N` must still give every hash exactly one remainder.
+    #[test]
+    fn every_hash_has_exactly_one_remainder(h in any::<i64>(), n in 1..=10_000_i64) {
+        let inner = h % n;
+        prop_assert!(-n < inner && inner < n);
+        // No step leaves bigint, so the expression never overflows.
+        let remainder = inner.checked_add(n).unwrap() % n;
+        prop_assert!((0..n).contains(&remainder));
+        prop_assert_eq!(remainder, h.rem_euclid(n));
+        let result = hash_input(i128::from(n), 0, 1);
+        let suffix = format!(" = {remainder}");
+        let matching: Vec<&Kind> = result.parts[1..]
+            .iter()
+            .filter(|part| part.sql.ends_with(&suffix))
+            .map(|part| &part.kind)
+            .collect();
+        prop_assert_eq!(matching, [&Kind::Hash(i128::from(remainder))]);
+    }
+
+    #[test]
+    fn the_estimates_add_up_and_differ_by_at_most_one(
+        n in 1..=10_000_i128,
+        (rows, null_rows) in hash_rows(),
+    ) {
+        let result = hash_input(n, null_rows, rows);
+        let estimates: Vec<i128> = result.parts[1..].iter().map(|part| part.estimated_rows).collect();
+        prop_assert_eq!(i128::try_from(estimates.len()).unwrap(), n);
+        prop_assert_eq!(result.planned_partitions(), n);
+        prop_assert_eq!(estimates.iter().sum::<i128>(), rows - null_rows);
+        let (low, high) = (estimates.iter().min().unwrap(), estimates.iter().max().unwrap());
+        prop_assert!(high - low <= 1, "{} and {}", low, high);
+        let remainders: Vec<&Kind> = result.parts[1..].iter().map(|part| &part.kind).collect();
+        let expected: Vec<Kind> = (0..n).map(Kind::Hash).collect();
+        prop_assert_eq!(remainders, expected.iter().collect::<Vec<_>>());
+        prop_assert_eq!(result.warnings[0].code, WarningCode::FullScans);
     }
 }

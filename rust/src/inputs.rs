@@ -294,7 +294,9 @@ fn shape(data: &Value) -> Result<&Object, SpecError> {
     Ok(fields)
 }
 
-fn keys(
+/// Check that `object` has every required key and no key outside the two
+/// lists, naming `what` in the message.
+pub(crate) fn keys(
     object: &Object,
     required: &[&str],
     optional: &[&str],
@@ -326,13 +328,15 @@ fn keys(
     Ok(())
 }
 
+/// The JSON type a field must have.
 #[derive(Clone, Copy)]
-enum Kind {
+pub(crate) enum Kind {
     String,
     Integer,
 }
 
-fn expect(object: &Object, key: &str, kind: Kind) -> Result<(), SpecError> {
+/// Check that the field `key` has the JSON type `kind`.
+pub(crate) fn expect(object: &Object, key: &str, kind: Kind) -> Result<(), SpecError> {
     let value = object.get(key);
     let (ok, name) = match kind {
         Kind::String => (value.and_then(Value::as_str).is_some(), "string"),
@@ -345,7 +349,7 @@ fn expect(object: &Object, key: &str, kind: Kind) -> Result<(), SpecError> {
     }
 }
 
-fn invalid_input(message: impl Into<String>) -> SpecError {
+pub(crate) fn invalid_input(message: impl Into<String>) -> SpecError {
     fail(ErrorCode::InvalidInput, message)
 }
 

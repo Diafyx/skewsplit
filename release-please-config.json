@@ -14,6 +14,7 @@
       "package-name": "skewsplit",
       "component": "python",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": ["python/tests"],
       "extra-files": [
         {
           "type": "toml",
@@ -27,6 +28,7 @@
       "package-name": "skewsplit",
       "component": "rust",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": ["rust/fuzz", "rust/tests"],
       "extra-files": [
         {
           "type": "toml",

@@ -109,6 +109,34 @@ def test_each_component_is_named_after_its_folder(path: str, release_type: str) 
     assert "include-v-in-tag" not in CONFIG  # the default, true, gives python-vX.Y.Z
 
 
+# The folders of each package that are not published: the sdist and the wheel
+# have python/src only, and the crate the files its include asks for.
+UNPUBLISHED = {"python": ["python/tests"], "rust": ["rust/fuzz", "rust/tests"]}
+
+
+@pytest.mark.parametrize(("path", "folders"), UNPUBLISHED.items())
+def test_changes_to_unpublished_folders_are_not_released(path: str, folders: list[str]) -> None:
+    # release-please leaves a commit out of a package's release when all of
+    # its files in the package are under exclude-paths, relative to the root.
+    # So a test of the Rust crate under python/tests is not a Python change.
+    assert CONFIG["packages"][path]["exclude-paths"] == folders
+    for folder in folders:
+        assert (REPO / folder).is_dir(), folder
+        assert folder.startswith(f"{path}/"), folder
+
+
+def test_the_unpublished_folders_are_not_in_the_packages() -> None:
+    assert all(not folder.startswith("python/src/") for folder in UNPUBLISHED["python"])
+    manifest = (REPO / "rust" / "Cargo.toml").read_text(encoding="utf-8")
+    match = re.search(r"^include = \[(.*)\]$", manifest, re.MULTILINE)
+    assert match is not None
+    include = re.findall(r'"([^"]+)"', match.group(1))
+    assert include
+    for folder in UNPUBLISHED["rust"]:
+        inside = "/" + folder.removeprefix("rust/") + "/"
+        assert not any(pattern.startswith(inside) for pattern in include), folder
+
+
 def test_the_title_pattern_has_no_unknown_placeholders() -> None:
     assert "${" not in release_title("python", "0.1.0")
 

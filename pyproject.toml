@@ -19,8 +19,11 @@ test = [
   "hypothesis>=6.141,<6.142; python_version<'3.10'",
   # The integration tests need a PostgreSQL driver, and the unit tests of the
   # adapter use its error classes. 3.3.6 is the first with Python 3.15 wheels;
-  # psycopg 3.3 needs Python 3.10.
-  "psycopg[binary]>=3.3.6; python_version>='3.10'",
+  # psycopg 3.3 needs Python 3.10. A Python newer than the binary wheels, which
+  # only the canary runs, gets the pure Python psycopg: it loads the system's
+  # libpq, which the runners have.
+  "psycopg[binary]>=3.3.6; python_version>='3.10' and python_version<'3.16'",
+  "psycopg>=3.3.6; python_version>='3.16'",
   "psycopg[binary]>=3.2.13,<3.3; python_version<'3.10'",
   "pytest>=9.2; python_version>='3.10'",
   "pytest>=8.4.2,<9; python_version<'3.10'",

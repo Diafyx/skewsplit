@@ -2,7 +2,8 @@ version = 1
 revision = 5
 requires-python = ">=3.9"
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -29,8 +30,9 @@ dev = [
     { name = "hypothesis", marker = "python_full_version >= '3.11'", specifier = ">=6.170" },
     { name = "mypy", marker = "python_full_version >= '3.11'", specifier = ">=2.4" },
     { name = "pre-commit-hooks", marker = "python_full_version >= '3.11'", specifier = ">=6.0" },
+    { name = "psycopg", marker = "python_full_version >= '3.16'", specifier = ">=3.3.6" },
     { name = "psycopg", extras = ["binary"], marker = "python_full_version < '3.10'", specifier = ">=3.2.13,<3.3" },
-    { name = "psycopg", extras = ["binary"], marker = "python_full_version >= '3.10'", specifier = ">=3.3.6" },
+    { name = "psycopg", extras = ["binary"], marker = "python_full_version >= '3.10' and python_full_version < '3.16'", specifier = ">=3.3.6" },
     { name = "pymarkdownlnt", marker = "python_full_version >= '3.11'", specifier = ">=0.9.42" },
     { name = "pytest", marker = "python_full_version < '3.10'", specifier = ">=8.4.2,<9" },
     { name = "pytest", marker = "python_full_version >= '3.10'", specifier = ">=9.2" },
@@ -67,8 +69,9 @@ test = [
     { name = "hypothesis", marker = "python_full_version < '3.10'", specifier = ">=6.141,<6.142" },
     { name = "hypothesis", marker = "python_full_version == '3.10.*'", specifier = ">=6.168,<6.169" },
     { name = "hypothesis", marker = "python_full_version >= '3.11'", specifier = ">=6.170" },
+    { name = "psycopg", marker = "python_full_version >= '3.16'", specifier = ">=3.3.6" },
     { name = "psycopg", extras = ["binary"], marker = "python_full_version < '3.10'", specifier = ">=3.2.13,<3.3" },
-    { name = "psycopg", extras = ["binary"], marker = "python_full_version >= '3.10'", specifier = ">=3.3.6" },
+    { name = "psycopg", extras = ["binary"], marker = "python_full_version >= '3.10' and python_full_version < '3.16'", specifier = ">=3.3.6" },
     { name = "pytest", marker = "python_full_version < '3.10'", specifier = ">=8.4.2,<9" },
     { name = "pytest", marker = "python_full_version >= '3.10'", specifier = ">=9.2" },
     { name = "pytest-benchmark", marker = "python_full_version < '3.10'", specifier = ">=5.2.3,<5.3" },
@@ -822,7 +825,8 @@ name = "coverage"
 version = "7.17.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -1157,7 +1161,8 @@ name = "hypothesis"
 version = "6.170.15"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -1320,7 +1325,8 @@ name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2045,7 +2051,8 @@ name = "pluggy"
 version = "1.7.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2094,7 +2101,8 @@ name = "psycopg"
 version = "3.3.9"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2183,7 +2191,7 @@ name = "psycopg-binary"
 version = "3.3.9"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2681,7 +2689,8 @@ name = "pytest"
 version = "9.2.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2722,7 +2731,8 @@ name = "pytest-benchmark"
 version = "5.3.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",
@@ -2773,7 +2783,8 @@ name = "pytest-randomly"
 version = "5.1.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15'",
+    "python_full_version >= '3.16'",
+    "python_full_version == '3.15.*'",
     "python_full_version == '3.14.*'",
     "python_full_version == '3.13.*'",
     "python_full_version >= '3.11' and python_full_version < '3.13'",

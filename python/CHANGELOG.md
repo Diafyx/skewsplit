@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Diafyx/skewsplit/compare/python-v0.2.0...python-v0.2.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **core:** print inf in the skew report for a planning time too large for a float ([0d6d649](https://github.com/Diafyx/skewsplit/commit/0d6d649ad3968a7d2b2881e3dddb19af41fad7c7))
+
 ## [0.2.0](https://github.com/Diafyx/skewsplit/compare/python-v0.1.0...python-v0.2.0) (2026-11-22)
 
 

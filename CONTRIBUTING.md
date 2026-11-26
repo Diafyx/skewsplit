@@ -294,6 +294,13 @@ creates labels by hand.
   crate's jobs up to the attestations without publishing anything.
 - The changelogs are generated from pull request titles. Do not edit them by
   hand; they are left out of the Markdown and spelling checks.
+- A pull request that changes only `python/tests`, `rust/tests` or `rust/fuzz`
+  in a package is left out of that package's release (`exclude-paths` in
+  `release-please-config.json`). To correct a merged pull request's entry, add
+  the right Conventional Commit messages to its description between the lines
+  `BEGIN_COMMIT_OVERRIDE` and `END_COMMIT_OVERRIDE`, separated by blank lines.
+  Never edit a release pull request's description: release-please finds its
+  pull requests by it.
 
 ### Publishing the crate
 

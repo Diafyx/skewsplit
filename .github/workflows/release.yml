@@ -352,8 +352,9 @@ jobs:
             exit 1
           fi
           echo "version=$current" >> "$GITHUB_OUTPUT"
-      # cargo publish --dry-run from the clean checkout, without --allow-dirty,
-      # then the list of files the crate would upload, checked against include.
+      # From the clean checkout, without --allow-dirty: cargo package, the list
+      # of files the crate would upload, checked against include, then
+      # cargo publish --dry-run.
       - run: make rust-package RUST_PACKAGE_FLAGS=
 
   # The command line for each platform, run once, then packed with the README

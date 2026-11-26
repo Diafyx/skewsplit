@@ -171,12 +171,18 @@ packaging: rust-package
 	.venv-smoke/bin/python -c 'import skewsplit; print(skewsplit.__version__)'
 	rm -rf .venv-smoke
 
-# The crate as crates.io would receive it: cargo publish --dry-run packages it,
-# builds it from the package alone and stops before the upload. Then
+# The crate as crates.io would receive it: cargo package writes it to
+# rust/target/package and builds it from the package alone, then
 # scripts/check_crate.py lists the files and checks them against include.
+# Last, cargo publish --dry-run runs the checks before an upload and stops;
+# --no-verify skips building the same package again. The old .crate is
+# removed first, so only this run's can pass the check.
+RUST_CRATE := rust/target/package/skewsplit-$(RUST_VERSION).crate
 rust-package:
-	$(CARGO) publish --dry-run --locked $(RUST_PACKAGE_FLAGS)
-	$(SCRIPT) scripts/check_crate.py rust/target/package/skewsplit-$(RUST_VERSION).crate
+	rm -f $(RUST_CRATE)
+	$(CARGO) package --locked $(RUST_PACKAGE_FLAGS)
+	$(SCRIPT) scripts/check_crate.py $(RUST_CRATE)
+	$(CARGO) publish --dry-run --locked --no-verify $(RUST_PACKAGE_FLAGS)
 
 # Markdown lint, the >>> examples in every Markdown file (pytest exits 5 when a
 # run finds no examples, which is fine), relative links everywhere, and

@@ -51,7 +51,7 @@ make check
 | `make rust-fuzz` | The array text reader's fuzz target, for `FUZZ_SECONDS` (60), with Rust nightly and cargo-fuzz |
 | `make differential` | The Rust command line against the Python core on random inputs, after building the binary. `SEED=N` repeats a run |
 | `make rust-mutation` | cargo-mutants on the crate's library, with cargo-nextest. `SHARD=k/n` tests one share of the mutants |
-| `make rust-package` | The crate as crates.io would receive it: `cargo publish --dry-run`, then a check of its files. `make packaging` runs it |
+| `make rust-package` | The crate as crates.io would receive it: `cargo package`, a check of its files, then `cargo publish --dry-run`. `make packaging` runs it |
 
 To run the same checks before each commit, install the hooks with
 `uvx pre-commit install`. They use the tool versions pinned in `uv.lock`, and

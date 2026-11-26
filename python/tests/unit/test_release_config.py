@@ -239,9 +239,16 @@ def test_only_a_release_publishes_after_approval(
     assert f"    environment:\n      name: {environment}\n" in text
 
 
-def test_the_crates_io_token_is_only_in_its_environment() -> None:
+def test_the_crate_is_published_with_trusted_publishing() -> None:
     using = [job for job, text in JOBS.items() if "CARGO_REGISTRY_TOKEN" in text]
     assert using == ["publish-crates-io"]
+    text = JOBS["publish-crates-io"]
+    assert "      id-token: write # Trusted Publishing\n" in text
+    assert "uses: rust-lang/crates-io-auth-action@" in text
+    assert "        id: auth\n" in text
+    assert "CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}" in text
+    # The secret of the first release is no longer read.
+    assert "secrets." not in text
 
 
 def test_the_rust_artifacts_are_not_attached_to_the_python_release() -> None:

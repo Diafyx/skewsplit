@@ -304,27 +304,23 @@ creates labels by hand.
 
 ### Publishing the crate
 
+The crate is published with Trusted Publishing, as the Python package is. The
+crate's settings on crates.io trust the repository `Diafyx/skewsplit`, the
+workflow `release.yml` and the environment `crates-io`, which needs a
+maintainer's approval and accepts only `main`. In the `publish-crates-io` job,
+`rust-lang/crates-io-auth-action` exchanges the job's OIDC token for a
+short-lived crates.io token, and `cargo publish` uses it. No crates.io token is
+stored in the repository.
+
+The action is in the organization's list of allowed actions and in `ALLOWED` in
+`python/tests/unit/test_workflow_actions.py`. A renamed workflow file or
+environment needs the same change in the crate's settings, or the publish fails.
+
 crates.io trusts a workflow only for a crate that already exists, so the first
-release publishes with an API token. Before it, an owner of the crate on
-crates.io creates a token with the scopes `publish-new` and `publish-update`
-for the crate `skewsplit` only, and an expiry date. It is saved as the secret
-`CARGO_REGISTRY_TOKEN` of the `crates-io` environment, which needs a
-maintainer's approval and accepts only `main`.
-
-After the first release, switch to Trusted Publishing:
-
-1. On crates.io, in the crate's settings, add a trusted publisher: GitHub, the
-   repository `Diafyx/skewsplit`, the workflow `release.yml` and the
-   environment `crates-io`.
-2. Allow `rust-lang/crates-io-auth-action` in Settings > Actions > General, and
-   add it to `ALLOWED` in `python/tests/unit/test_workflow_actions.py`.
-3. In the `publish-crates-io` job of `release.yml`, grant `id-token: write` and
-   add a step with `id: auth` before Publish that uses
-   `rust-lang/crates-io-auth-action`, pinned to a commit SHA. Set
-   `CARGO_REGISTRY_TOKEN` to `${{ steps.auth.outputs.token }}`, and remove the
-   zizmor ignore on `cargo publish`.
-4. After the next release has published that way, delete the secret
-   `CARGO_REGISTRY_TOKEN` and revoke the token on crates.io.
+release, 0.1.0, published with an API token saved as the secret
+`CARGO_REGISTRY_TOKEN` of the `crates-io` environment. After the first release
+that publishes with Trusted Publishing, delete that secret and revoke the token
+on crates.io.
 
 ## Supported versions
 

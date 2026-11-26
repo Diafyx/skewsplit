@@ -1,8 +1,9 @@
 """Checks that every workflow uses only actions the repository allows.
 
-Settings → Actions → General allows GitHub's own actions and the patterns
-below. GitHub refuses to start a workflow that uses any other action, so the
-whole run fails before a job starts. Keep ALLOWED equal to that setting.
+The Diafyx organization's Settings → Actions → General allows GitHub's own
+actions and the patterns below, for every repository. GitHub refuses to start
+a workflow that uses any other action, so the whole run fails before a job
+starts. Keep ALLOWED equal to that setting.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ ALLOWED = (
     "googleapis/release-please-action",
     "pypa/gh-action-pypi-publish",
     "ossf/scorecard-action",
+    "rust-lang/crates-io-auth-action",
 )
 _USES = re.compile(r"^\s*(?:- )?uses: ([^@\s]+)@([0-9a-f]{40}) # v\S+$", re.MULTILINE)
 

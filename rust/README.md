@@ -16,6 +16,23 @@ Both implementations follow the same behaviour spec,
 [`spec/SPEC.md`](https://github.com/Diafyx/skewsplit/blob/main/spec/SPEC.md),
 and pass the same golden fixtures.
 
+## Install
+
+Each release from 0.1.0 is on crates.io:
+
+```sh
+cargo install skewsplit --locked
+```
+
+The GitHub Release of each version (`rust-vX.Y.Z`) has the command line built
+for Linux (x86_64 and arm64, with no dependencies), macOS (Intel and Apple
+silicon) and Windows. Its build provenance shows that the repository's release
+workflow built it:
+
+```sh
+gh attestation verify skewsplit-0.1.0-x86_64-unknown-linux-musl.tar.gz --repo Diafyx/skewsplit
+```
+
 ## Command line
 
 `skewsplit plan` plans from a column's distribution in a JSON file (spec

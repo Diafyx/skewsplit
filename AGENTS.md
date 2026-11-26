@@ -27,6 +27,7 @@ make py-unit     # unit and property tests with coverage data
 make conformance # golden fixtures against Python and Rust, spec invariants, more Hypothesis examples
 make mutation    # mutmut on the core (about five minutes; nightly runs it)
 make rust-mutation  # cargo-mutants on the crate's library, on a copy (nightly runs it)
+make rust-package   # cargo package, a check of the crate's files, cargo publish --dry-run
 make rust-test   # the crate's tests (cargo-nextest) and doc tests
 make rust-coverage  # the crate's coverage gates (cargo-llvm-cov)
 make rust-fuzz   # the array text fuzz target (needs Rust nightly and cargo-fuzz)

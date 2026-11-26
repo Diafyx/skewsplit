@@ -11,8 +11,9 @@ name: Nightly
 # - mutation testing of the core with mutmut, and of the crate's library with
 #   cargo-mutants in 4 shards. Below 90% of the mutants killed, each opens its
 #   issue, or comments on the one already open;
-# - the Spark benchmark. When skewsplit's median max task time moves by more
-#   than 10% from bench/baseline.json, it opens an issue, or comments on it;
+# - the Spark benchmark. When skewsplit's median max task time, as a share of
+#   the default bounds' in the same run, moves by more than 10% from
+#   bench/baseline.json, it opens an issue, or comments on it;
 # - every external link in the docs.
 #
 # Run it by hand with "dry-run" to rehearse the issues: mutation-issue,
@@ -387,9 +388,10 @@ jobs:
     uses: ./.github/workflows/bench.yml # zizmor: ignore[self-repository]
 
   # Compares the benchmark with bench/baseline.json, the README headline's run,
-  # and opens the tracking issue when skewsplit's max task time moved by more
-  # than 10%, or comments on it if it is open. With dry-run it always prints
-  # the issue and writes nothing.
+  # and opens the tracking issue when skewsplit's max task time, as a share of
+  # the default bounds' in the same run, moved by more than 10%, or comments on
+  # it if it is open. The title stays the same, so the open issue is found by
+  # it. With dry-run it always prints the issue and writes nothing.
   bench-issue:
     name: bench issue
     needs: bench

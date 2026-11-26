@@ -179,6 +179,16 @@ def java_version() -> str:
     return "unknown"
 
 
+def cpu_model() -> str:
+    """The processor's model name from /proc/cpuinfo, as runners differ in hardware."""
+    cpuinfo = Path("/proc/cpuinfo")
+    lines = cpuinfo.read_text(encoding="utf-8").splitlines() if cpuinfo.is_file() else []
+    for line in lines:
+        if line.startswith("model name"):
+            return line.split(":", 1)[1].strip()
+    return "unknown"
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run every method on every column, interleaved, and write the results."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -232,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         "python": platform.python_version(),
         "postgres": pg_version,
         "cpus": os.cpu_count(),
+        "cpu": cpu_model(),
         "memory_gb": round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30),
         # GitHub's runner image, for example "ubuntu24 20261116.1".
         "runner": " ".join(os.environ.get(k, "") for k in ("ImageOS", "ImageVersion")).strip(),

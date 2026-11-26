@@ -3,7 +3,8 @@ name: Bench
 # The Spark benchmark (bench/README.md). It is not part of ci-gate. It runs by
 # hand, on pull requests that change the benchmark itself, so a change to
 # bench/ comes with its own results, and each night from nightly.yml, which
-# compares skewsplit's max task time with bench/baseline.json.
+# compares skewsplit's max task time with bench/baseline.json, as a share of
+# the default bounds' in the same run.
 on:
   workflow_call:
     inputs:

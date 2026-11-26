@@ -55,7 +55,8 @@ and the report shows medians. It records:
 - The runner is GitHub-hosted `ubuntu-latest` with 4 CPUs and 16 GB. Spark
   runs in local mode on it, with PostgreSQL 18 as a service container, so
   the database and Spark share the machine. RESULTS.md names the runner
-  image, and the Spark, Java, Python and PostgreSQL versions.
+  image and its processor, and the Spark, Java, Python and PostgreSQL
+  versions.
 - The data comes from `setseed(0.42)`, and the sample from `--seed 1`, so both
   are the same on every run. `ANALYZE` takes a random sample of its own, so
   the statistics strategy's plan can differ a little between runs.
@@ -80,6 +81,9 @@ skewsplit's plans and Spark's event log. To update the published results:
 ## Nightly
 
 `nightly.yml` runs the benchmark every night and compares skewsplit's median
-max task time with [`baseline.json`](baseline.json), written from the headline's run. When
-it moves by more than 10% either way, `bench_compare.py` writes the issue, and
+max task time with [`baseline.json`](baseline.json), written from the headline's run.
+Runners differ in speed, so seconds from two runs do not compare: it compares
+skewsplit's time as a share of the default bounds' in the same run, a read
+that does not use skewsplit. When that share moves by more than 10% either
+way, `bench_compare.py` writes the issue, and
 `scripts/tracking_issue.py` opens it or comments on the one already open.

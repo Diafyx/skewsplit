@@ -4,10 +4,12 @@
   "partitions": 16,
   "max_task_seconds": {
     "customer_id": {
+      "default bounds": 11.881,
       "skewsplit statistics": 2.946,
       "skewsplit sample": 3.011
     },
     "created_at": {
+      "default bounds": 7.811,
       "skewsplit statistics": 2.949,
       "skewsplit sample": 2.668
     }

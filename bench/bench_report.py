@@ -75,6 +75,8 @@ def summaries(report: dict[str, Any], column: str) -> dict[str, dict[str, Any]]:
 def setup(report: dict[str, Any]) -> list[str]:
     """What ran where, and what makes it reproducible, as Markdown list items."""
     env = report["environment"]
+    # Results from before the processor was recorded have no "cpu".
+    cpu = f", {env['cpu']}" if env.get("cpu") else ""
     lines = [
         (
             f"- Table `{report['table']}`: {report['rows']:,} rows from"
@@ -93,7 +95,8 @@ def setup(report: dict[str, Any]) -> list[str]:
         ),
         (
             f"- PostgreSQL {env['postgres']} in a service container on the same runner"
-            f" ({env['runner'] or 'unknown image'}, {env['cpus']} CPUs, {env['memory_gb']} GB)."
+            f" ({env['runner'] or 'unknown image'}, {env['cpus']} CPUs{cpu},"
+            f" {env['memory_gb']} GB)."
         ),
     ]
     if report.get("run_url"):

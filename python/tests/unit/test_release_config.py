@@ -1,8 +1,9 @@
 """Checks that the release-please setup agrees with the packages and the PR rules.
 
 A release pull request changes the manifest and the component's version files
-together (python/pyproject.toml and uv.lock, or rust/Cargo.toml and
-rust/Cargo.lock), so CI on that pull request runs these checks too.
+together (python/pyproject.toml and uv.lock, or rust/Cargo.toml and the lock
+files rust/Cargo.lock and rust/fuzz/Cargo.lock), so CI on that pull request
+runs these checks too.
 """
 
 from __future__ import annotations
@@ -54,12 +55,46 @@ def test_the_manifest_version_is_the_package_version() -> None:
     assert project == locked == [MANIFEST["python"]]
 
 
+_LOCKED_CRATE = re.compile(r'^name = "skewsplit"\nversion = "([^"]+)"$', re.MULTILINE)
+
+
+def crate_lock_files() -> list[Path]:
+    """Return the lock files under rust/ that list the crate, outside build output.
+
+    rust/Cargo.lock is the crate's own; others, such as rust/fuzz/Cargo.lock,
+    belong to crates that depend on it by path.
+    """
+    return sorted(
+        lock
+        for lock in (REPO / "rust").rglob("Cargo.lock")
+        if "target" not in lock.relative_to(REPO).parts
+        and _LOCKED_CRATE.search(lock.read_text(encoding="utf-8"))
+    )
+
+
 def test_the_crate_version_is_the_manifest_version() -> None:
     manifest = (REPO / "rust" / "Cargo.toml").read_text(encoding="utf-8")
-    lock = (REPO / "rust" / "Cargo.lock").read_text(encoding="utf-8")
     package = re.findall(r'^version = "([^"]+)"$', manifest, re.MULTILINE)
-    locked = re.findall(r'^name = "skewsplit"\nversion = "([^"]+)"$', lock, re.MULTILINE)
-    assert package == locked == [MANIFEST["rust"]]
+    assert package == [MANIFEST["rust"]]
+    for lock in crate_lock_files():
+        locked = _LOCKED_CRATE.findall(lock.read_text(encoding="utf-8"))
+        assert locked == [MANIFEST["rust"]], lock
+
+
+def test_release_please_updates_every_lock_file_of_the_crate() -> None:
+    # The rust release type updates rust/Cargo.lock itself. Any other lock file
+    # is an extra file, or a release pull request leaves it on the old version
+    # and cargo --locked refuses to build. A path in extra-files is relative to
+    # the package's folder, unless it starts with a slash.
+    rust = REPO / "rust"
+    updated = {rust / "Cargo.lock"}
+    for extra in CONFIG["packages"]["rust"].get("extra-files", []):
+        path = str(extra["path"])
+        updated.add(REPO / path[1:] if path.startswith("/") else rust / path)
+        assert extra["type"] == "toml"
+        assert extra["jsonpath"] == "$.package[?(@.name.value=='skewsplit')].version"
+    assert {rust / "Cargo.lock", rust / "fuzz" / "Cargo.lock"} <= set(crate_lock_files())
+    assert set(crate_lock_files()) <= updated
 
 
 @pytest.mark.parametrize(("path", "release_type"), [("python", "python"), ("rust", "rust")])

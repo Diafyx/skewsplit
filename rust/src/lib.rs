@@ -6,8 +6,9 @@
 //! command line is the `skewsplit` binary, which plans from a stats file. So
 //! far the library has the value codecs ([`codecs`]), JSON as Python reads
 //! and writes it ([`json`]), the planner input checks ([`inputs`]), the
-//! planner ([`planner`]) with its plans and their reports and snippets
-//! ([`plan`]), and PostgreSQL's array text ([`pgarray`]).
+//! range planner ([`planner`]) and the hash planner ([`hashing`]) with their
+//! plans and the plans' reports and snippets ([`plan`]), and PostgreSQL's
+//! array text ([`pgarray`]).
 //!
 //! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
 //! repository, and pass the same golden fixtures.
@@ -20,6 +21,7 @@
 
 pub mod codecs;
 pub mod error;
+pub mod hashing;
 pub mod inputs;
 pub mod json;
 pub mod pgarray;

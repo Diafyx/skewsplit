@@ -1,5 +1,6 @@
 //! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
-//! every array text fixture in `spec/fixtures/pg-array/` (section 12), and
+//! every hash fixture in `spec/fixtures/hash/` (section 16), every array text
+//! fixture in `spec/fixtures/pg-array/` (section 12), and
 //! the command line's output for the planner inputs of the fixtures, which
 //! must be the Python command line's.
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
@@ -17,6 +18,7 @@ use std::process::{Command, Output, Stdio};
 use skewsplit::SPEC_VERSION;
 use skewsplit::codecs::codec_for;
 use skewsplit::error::SpecError;
+use skewsplit::hashing::hash_plan;
 use skewsplit::json::{self, Object, Value};
 use skewsplit::pgarray::parse_values;
 use skewsplit::plan::error_value;
@@ -29,14 +31,13 @@ struct Fixture {
 }
 
 /// The fixture folders this file runs, besides the planner fixtures at the top.
-const RUN: [&str; 1] = ["pg-array"];
+const RUN: [&str; 2] = ["hash", "pg-array"];
 
 /// The fixture folders this crate doesn't run yet, because it hasn't ported
 /// what they test. A new folder fails
 /// `every_fixture_folder_is_run_or_not_ported_yet` until it is run here or
 /// listed.
-const NOT_PORTED_YET: [&str; 3] = [
-    "hash",     // the hash planner, spec section 16
+const NOT_PORTED_YET: [&str; 2] = [
     "pg-stats", // converting pg_stats, spec section 13
     "sample",   // converting a sample, spec section 14
 ];
@@ -132,6 +133,38 @@ fn every_fixture_plans_byte_for_byte() {
     }
     assert!(
         plans >= 15 && errors >= 15,
+        "{plans} plans, {errors} errors"
+    );
+}
+
+#[test]
+fn every_hash_fixture_plans_byte_for_byte() {
+    let fixtures = fixtures("hash");
+    assert!(fixtures.len() >= 20);
+    let (mut plans, mut errors) = (0, 0);
+    for fixture in fixtures {
+        let actual = match hash_plan(&fixture.input) {
+            Ok(result) => {
+                plans += 1;
+                result.to_value()
+            }
+            Err(error) => {
+                errors += 1;
+                error_value(&error)
+            }
+        };
+        let actual = without_messages(actual);
+        for indent in [None, Some(2)] {
+            assert_eq!(
+                actual.to_json(indent).unwrap(),
+                fixture.expected.to_json(indent).unwrap(),
+                "{}",
+                fixture.name
+            );
+        }
+    }
+    assert!(
+        plans >= 10 && errors >= 15,
         "{plans} plans, {errors} errors"
     );
 }

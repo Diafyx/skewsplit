@@ -7,9 +7,9 @@ distribution.
 > **Status: not usable yet.** So far this crate has the range planner and
 > the hash planner, which give byte for byte the plans of the Python package,
 > with the value codecs, the input checks, JSON as Python reads and writes it,
-> PostgreSQL's array text, the planner input from a sample of a column, and a
-> command line that plans from a stats file. The conversion of PostgreSQL's
-> statistics is being ported from the
+> PostgreSQL's array text, the planner input from PostgreSQL's statistics or
+> from a sample of a column, and a command line that plans from a stats file.
+> Reading the statistics from a database is only in the
 > [Python package](https://pypi.org/project/skewsplit/), which you can use
 > today.
 

@@ -3,8 +3,10 @@
 //! Hypothesis, of reading array text (spec section 12), as
 //! `python/tests/property/test_pgarray_properties.py` does, and of hash
 //! predicates (section 16), as `python/tests/property/test_hash_properties.py`
-//! does, and of converting a sample (section 14), as
-//! `python/tests/property/test_sample_properties.py` does.
+//! does, of converting a sample (section 14), as
+//! `python/tests/property/test_sample_properties.py` does, and of converting
+//! `pg_stats` (section 13), as `python/tests/property/test_pgstats_properties.py`
+//! does.
 //!
 //! `PROPTEST_PROFILE` sets the number of cases of each test, as
 //! `HYPOTHESIS_PROFILE` sets the examples for Python: `dev` (the default) 100,
@@ -27,6 +29,7 @@ use skewsplit::error::ErrorCode;
 use skewsplit::hashing::hash_plan;
 use skewsplit::json::{Object, Value};
 use skewsplit::pgarray::{parse_array, parse_values};
+use skewsplit::pgstats::from_pg_stats;
 use skewsplit::plan::{Kind, Op, Plan, Predicate, WarningCode};
 use skewsplit::planner::plan;
 use skewsplit::sample::from_sample;
@@ -794,6 +797,380 @@ proptest! {
             } else {
                 prop_assert_eq!(actual, part.estimated_rows, "{}", part.sql);
             }
+        }
+    }
+}
+
+// Converting pg_stats (spec section 13). The reference computations hold
+// each number as a whole number of units of 10^-18, which every drawn text
+// is, and share no code with the conversion.
+
+/// 10^18: one in units of 10^-18.
+const ONE: u128 = 1_000_000_000_000_000_000;
+
+/// A number text of section 13 and its value in units of 10^-18, drawn as
+/// Python's `decimal_text` draws them, such as 12.5, 3e-05 or 1.25e+07. A
+/// value above `max` is made smaller with the exponent -12, or without its
+/// exponent, so no draw is rejected.
+fn decimal_text(max: u128) -> impl Strategy<Value = (String, u128)> {
+    (
+        prop_oneof![Just(0_u128), Just(1), 0..=1_000_000_u128],
+        proptest::option::of(vec(0..10_u8, 1..=6)),
+        proptest::option::of(-12..=12_i32),
+    )
+        .prop_map(move |(whole, fraction, exponent)| {
+            let value = |exponent: Option<i32>| number_text(whole, fraction.as_deref(), exponent);
+            let (text, units) = value(exponent);
+            if units <= max {
+                (text, units)
+            } else if max <= ONE {
+                value(Some(-12))
+            } else {
+                value(None)
+            }
+        })
+}
+
+fn number_text(whole: u128, fraction: Option<&[u8]>, exponent: Option<i32>) -> (String, u128) {
+    let digits: String = fraction
+        .unwrap_or_default()
+        .iter()
+        .map(|digit| char::from(b'0' + digit))
+        .collect();
+    let mut text = whole.to_string();
+    if fraction.is_some() {
+        text = format!("{text}.{digits}");
+    }
+    if let Some(exponent) = exponent {
+        let sign = if exponent < 0 { '-' } else { '+' };
+        text = format!("{text}e{sign}{:02}", exponent.abs());
+    }
+    // At most 6 places and an exponent of at least -12, so the shift is not negative.
+    let places = i32::try_from(digits.len()).unwrap();
+    let shift = u32::try_from(18 - places + exponent.unwrap_or_default()).unwrap();
+    let mantissa: u128 = format!("{whole}{digits}").parse().unwrap();
+    (text, mantissa * 10_u128.pow(shift))
+}
+
+/// `round(f × t)` for f at most 1 and t at most 3 × 10^12, in units of
+/// 10^-18. Their product in units of 10^-36 can pass 2^128, so with t = t1
+/// whole units and t0 below 10^18, f × t is f × t1 / 10^18 + f × t0 / 10^36.
+fn round_product(f: u128, t: u128) -> i128 {
+    let (t1, t0) = (t / ONE, t % ONE);
+    let (x1, x0) = (f * t1 / ONE, f * t1 % ONE);
+    let rest = (x0 * ONE + f * t0 + ONE * ONE / 2) / (ONE * ONE);
+    i128::try_from(x1 + rest).unwrap()
+}
+
+/// Add up the rows of buckets lead + 1 to m - trail, one by one (section 3).
+fn kept_rows(rows: i128, buckets: i128, lead: i128, trail: i128) -> i128 {
+    (lead + 1..=buckets - trail)
+        .map(|i| i * rows / buckets - (i - 1) * rows / buckets)
+        .sum()
+}
+
+fn array_text(items: &[String]) -> String {
+    format!("{{{}}}", items.join(","))
+}
+
+fn pg_stats_input(entries: Vec<(&str, Value)>) -> Value {
+    let mut data = Object::new();
+    for (key, value) in entries {
+        data.insert(key, value);
+    }
+    Value::Object(data)
+}
+
+fn texts_of(drawn: &[(String, u128)]) -> Value {
+    Value::Array(
+        drawn
+            .iter()
+            .map(|(text, _)| Value::from(text.as_str()))
+            .collect(),
+    )
+}
+
+fn text_or_null(text: Option<String>) -> Value {
+    text.map_or(Value::Null, Value::from)
+}
+
+fn int_field(value: &Value, key: &str) -> i128 {
+    value.get(key).and_then(Value::as_i128).unwrap()
+}
+
+fn warning_codes(source: &Value) -> Vec<String> {
+    source
+        .get("warnings")
+        .and_then(Value::as_array)
+        .unwrap()
+        .iter()
+        .map(|warning| {
+            warning
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap()
+                .to_owned()
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+struct Int4Statistics {
+    values: Vec<i128>,
+    freqs: Vec<(String, u128)>,
+    bounds: Option<Vec<i128>>,
+    partitions: i128,
+    reltuples: Vec<(String, u128)>,
+    null_frac: (String, u128),
+    modified: Option<i128>,
+}
+
+fn int4_statistics() -> impl Strategy<Value = Int4Statistics> {
+    proptest::collection::btree_set(-1000..=1000_i128, 0..=8)
+        .prop_flat_map(|values| {
+            let values: Vec<i128> = values.into_iter().collect();
+            let common = values.clone();
+            let others =
+                (-1000..=1000_i128).prop_filter("not a common value", move |v| !common.contains(v));
+            (
+                Just(values.clone()),
+                vec(decimal_text(ONE), values.len()),
+                proptest::option::of(vec(others, 2..=12)),
+                1..=50_i128,
+                vec(decimal_text(ONE * 1_000_000_000_000), 1..=3),
+                decimal_text(ONE),
+                proptest::option::of(0..=10_000_000_000_000_i128),
+            )
+        })
+        .prop_map(
+            |(values, freqs, bounds, partitions, reltuples, null_frac, modified)| Int4Statistics {
+                values,
+                freqs,
+                bounds: bounds.map(|mut bounds| {
+                    bounds.sort_unstable();
+                    bounds
+                }),
+                partitions,
+                reltuples,
+                null_frac,
+                modified,
+            },
+        )
+}
+
+impl Int4Statistics {
+    fn input(&self) -> Value {
+        let numbers =
+            |items: &[i128]| array_text(&items.iter().map(ToString::to_string).collect::<Vec<_>>());
+        let has_values = !self.values.is_empty();
+        let freqs: Vec<String> = self.freqs.iter().map(|(text, _)| text.clone()).collect();
+        pg_stats_input(vec![
+            ("column", Value::from("c")),
+            ("type", Value::from("int4")),
+            ("partitions", Value::from(self.partitions)),
+            ("reltuples", texts_of(&self.reltuples)),
+            ("null_frac", Value::from(self.null_frac.0.as_str())),
+            (
+                "most_common_vals",
+                text_or_null(has_values.then(|| numbers(&self.values))),
+            ),
+            (
+                "most_common_freqs",
+                text_or_null(has_values.then(|| array_text(&freqs))),
+            ),
+            (
+                "histogram_bounds",
+                text_or_null(self.bounds.as_deref().map(numbers)),
+            ),
+            (
+                "modified_since_analyze",
+                self.modified.map_or(Value::Null, Value::from),
+            ),
+        ])
+    }
+}
+
+#[derive(Debug)]
+struct DateStatistics {
+    bounds: Vec<String>,
+    lead: i128,
+    trail: i128,
+    special: Vec<&'static str>,
+    freqs: Vec<(String, u128)>,
+    reltuples: (String, u128),
+    null_frac: (String, u128),
+}
+
+/// Date statistics whose histogram starts with `lead` -infinity and ends
+/// with `trail` infinity, and whose common values are special.
+fn date_statistics() -> impl Strategy<Value = DateStatistics> {
+    let codec = codec_for("date", None).unwrap();
+    let (first, last) = (
+        codec.parse("0001-01-01").unwrap(),
+        codec.parse("9999-12-31").unwrap(),
+    );
+    let orders: [&[&'static str]; 5] = [
+        &[],
+        &["infinity"],
+        &["-infinity"],
+        &["infinity", "-infinity"],
+        &["-infinity", "infinity"],
+    ];
+    (
+        0..=3_usize,
+        0..=3_usize,
+        vec(first..=last, 0..=8),
+        select(orders.to_vec()),
+    )
+        .prop_flat_map(move |(lead, trail, mut dates, special)| {
+            dates.sort_unstable();
+            let mut bounds = vec!["-infinity".to_owned(); lead];
+            bounds.extend(dates.iter().map(|&date| codec.text(date).unwrap()));
+            bounds.extend(vec!["infinity".to_owned(); trail]);
+            let (bounds, lead, trail) = if bounds.len() < 2 {
+                (vec!["-infinity".to_owned(), "infinity".to_owned()], 2, 0)
+            } else {
+                (bounds, lead, trail)
+            };
+            (
+                Just(bounds),
+                Just(i128::try_from(lead).unwrap()),
+                Just(i128::try_from(trail).unwrap()),
+                Just(special.to_vec()),
+                vec(decimal_text(ONE), special.len()),
+                decimal_text(ONE * 1_000_000_000_000),
+                decimal_text(ONE),
+            )
+        })
+        .prop_map(
+            |(bounds, lead, trail, special, freqs, reltuples, null_frac)| DateStatistics {
+                bounds,
+                lead,
+                trail,
+                special,
+                freqs,
+                reltuples,
+                null_frac,
+            },
+        )
+}
+
+/// Text from the characters of number, array and special value texts.
+fn near_statistics() -> impl Strategy<Value = String> {
+    let chars: Vec<char> = "{}0123456789.e+-,\"NaInfity ".chars().collect();
+    vec(select(chars), 0..=12).prop_map(|chars| chars.into_iter().collect())
+}
+
+fn any_field() -> impl Strategy<Value = Value> {
+    prop_oneof![
+        Just(Value::Null),
+        near_statistics().prop_map(Value::from),
+        (-5..=5_i128).prop_map(Value::from),
+        vec(near_statistics().prop_map(Value::from), 0..=2).prop_map(Value::Array),
+    ]
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn the_row_counts_are_exact(stats in int4_statistics()) {
+        let result = from_pg_stats(&stats.input()).unwrap();
+        let total: u128 = stats.reltuples.iter().map(|(_, units)| units).sum();
+        let rows_estimate = round_product(ONE, total);
+        let null_rows = round_product(stats.null_frac.1, total);
+        let common: Vec<i128> = stats.freqs.iter().map(|&(_, f)| round_product(f, total).max(1)).collect();
+        prop_assert_eq!(int_field(&result, "null_rows"), null_rows);
+        let mcv = result.get("mcv").and_then(Value::as_array).unwrap();
+        prop_assert_eq!(mcv.iter().map(|entry| int_field(entry, "rows")).collect::<Vec<_>>(), common.clone());
+        let histogram = result.get("histogram").unwrap();
+        if stats.bounds.is_none() {
+            prop_assert!(histogram.is_null());
+        } else {
+            let rows = (rows_estimate - null_rows - common.iter().sum::<i128>()).max(0);
+            prop_assert_eq!(int_field(histogram, "rows"), rows);
+        }
+        let source = result.get("source").unwrap();
+        prop_assert_eq!(int_field(source, "rows_estimate"), rows_estimate);
+        prop_assert_eq!(int_field(source, "unestimated_rows"), 0);
+        let stale = stats.modified.is_some_and(|modified| modified * 10 > rows_estimate);
+        prop_assert_eq!(warning_codes(source), if stale { vec!["stale_statistics".to_owned()] } else { vec![] });
+    }
+
+    #[test]
+    fn special_values_are_left_out_with_their_rows(stats in date_statistics()) {
+        let freqs: Vec<String> = stats.freqs.iter().map(|(text, _)| text.clone()).collect();
+        let special: Vec<String> = stats.special.iter().map(|&value| value.to_owned()).collect();
+        let input = pg_stats_input(vec![
+            ("column", Value::from("d")),
+            ("type", Value::from("date")),
+            ("partitions", Value::from(4)),
+            ("reltuples", texts_of(std::slice::from_ref(&stats.reltuples))),
+            ("null_frac", Value::from(stats.null_frac.0.as_str())),
+            ("most_common_vals", Value::from(array_text(&special))),
+            ("most_common_freqs", Value::from(array_text(&freqs))),
+            ("histogram_bounds", Value::from(array_text(&stats.bounds))),
+            ("modified_since_analyze", Value::Null),
+        ]);
+        let result = from_pg_stats(&input).unwrap();
+        let total = stats.reltuples.1;
+        let rows_estimate = round_product(ONE, total);
+        let null_rows = round_product(stats.null_frac.1, total);
+        let common: i128 = stats.freqs.iter().map(|&(_, f)| round_product(f, total).max(1)).sum();
+        let rows = (rows_estimate - null_rows - common).max(0);
+        let buckets = i128::try_from(stats.bounds.len()).unwrap() - 1;
+        let remaining = buckets + 1 - stats.lead - stats.trail;
+        let kept = if remaining >= 2 { kept_rows(rows, buckets, stats.lead, stats.trail) } else { 0 };
+        prop_assert_eq!(result.get("mcv"), Some(&Value::Array(vec![])));
+        let histogram = result.get("histogram").unwrap();
+        if remaining >= 2 {
+            prop_assert_eq!(int_field(histogram, "rows"), kept);
+            let bounds = histogram.get("bounds").and_then(Value::as_array).unwrap();
+            prop_assert_eq!(i128::try_from(bounds.len()).unwrap(), remaining);
+        } else {
+            prop_assert!(histogram.is_null());
+        }
+        let source = result.get("source").unwrap();
+        let unestimated = common + rows - kept;
+        prop_assert_eq!(int_field(source, "unestimated_rows"), unestimated);
+        let expected = if unestimated > 0 { vec!["special_values_left_out".to_owned()] } else { vec![] };
+        prop_assert_eq!(warning_codes(source), expected);
+    }
+
+    #[test]
+    fn any_statistics_give_an_input_or_a_spec_error(
+        column in select(vec!["c", ""]),
+        type_name in select(vec!["int4", "date", "numeric", "text"]),
+        partitions in 0..=3_i128,
+        reltuples in prop_oneof![vec(near_statistics().prop_map(Value::from), 0..=2).prop_map(Value::Array), any_field()],
+        null_frac in prop_oneof![near_statistics().prop_map(Value::from), any_field()],
+        arrays in vec(any_field(), 3),
+        modified in any_field(),
+        scale in proptest::option::of(prop_oneof![(-1..=3_i128).prop_map(Value::from), near_statistics().prop_map(Value::from)]),
+        extra in any::<bool>(),
+    ) {
+        let mut entries = vec![
+            ("column", Value::from(column)),
+            ("type", Value::from(type_name)),
+            ("partitions", Value::from(partitions)),
+            ("reltuples", reltuples),
+            ("null_frac", null_frac),
+            ("most_common_vals", arrays[0].clone()),
+            ("most_common_freqs", arrays[1].clone()),
+            ("histogram_bounds", arrays[2].clone()),
+            ("modified_since_analyze", modified),
+        ];
+        entries.extend(scale.map(|scale| ("scale", scale)));
+        if extra {
+            entries.push(("extra", Value::from(1)));
+        }
+        match from_pg_stats(&pg_stats_input(entries)) {
+            Ok(result) => {
+                for key in ["column", "type", "partitions", "null_rows", "mcv", "histogram"] {
+                    prop_assert!(result.get(key).is_some(), "{}", key);
+                }
+            }
+            Err(error) => prop_assert!(!error.message().is_empty()),
         }
     }
 }

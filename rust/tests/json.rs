@@ -284,7 +284,9 @@ fn nesting_deeper_than_the_limit_is_refused() {
 #[test]
 fn an_object_keeps_its_order_and_can_change() {
     let mut object = Object::new();
+    assert!(object.is_empty());
     object.insert("b", Value::from(1));
+    assert!(!object.is_empty());
     object.insert("a", Value::from(2));
     object.insert("b", Value::from(3));
     assert_eq!(object.keys().collect::<Vec<_>>(), ["b", "a"]);

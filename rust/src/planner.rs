@@ -335,6 +335,9 @@ fn allocate(sizes: &[i128], ranges: i128) -> Vec<i128> {
 fn split_points(g: &Estimate, codec: &Codec, segment: &Segment, count: i128) -> Vec<i128> {
     let (lower, base, top) = (segment.lower, segment.base, segment.top);
     let max_ordinal = codec.max_ordinal();
+    // G leaves out the dominant value at `lower`, so G(lower) - base is 0, and
+    // a search that starts at `lower` or below finds the same x_hi: the
+    // mutants of `+ 1` here are equivalent (rust/.cargo/mutants.toml).
     let first = lower.map_or(codec.min_ordinal(), |lower| lower + 1);
     let mut points = Vec::new();
     let mut previous = base;
@@ -345,6 +348,9 @@ fn split_points(g: &Estimate, codec: &Codec, segment: &Segment, count: i128) -> 
         }
         // x_hi: the smallest ordinal from `first` with G(x) - G(L) >= target.
         // It is at most MAX + 1, as the segment holds more than `target` rows.
+        // Searching only up to MAX gives the same point: then x_hi is MAX, at
+        // a negative distance, where the full search picks x_lo = MAX
+        // (an equivalent mutant, rust/.cargo/mutants.toml).
         let (mut lo, mut hi) = (first, max_ordinal + 1);
         while lo < hi {
             // Floor division, as in the spec, even when lo + hi is negative.
@@ -360,6 +366,10 @@ fn split_points(g: &Estimate, codec: &Codec, segment: &Segment, count: i128) -> 
         if x_hi <= max_ordinal {
             options.push((g.below(x_hi) - base - target, x_hi));
         }
+        // With `>=`, x_lo could be `lower` when x_hi is `first`. That point
+        // adds nothing, as its G is `base`, and a later target, at least half
+        // of G(first) - base, picks `first`: the same points (an equivalent
+        // mutant, rust/.cargo/mutants.toml).
         if lower.is_none_or(|lower| x_lo > lower) {
             options.push((target - (g.below(x_lo) - base), x_lo));
         }
@@ -453,7 +463,9 @@ fn warnings(
 mod tests {
     // The private parts of the planner, with the cases of the Python core's
     // tests of Estimate and _allocate.
-    use super::{Estimate, allocate};
+    use std::cmp::Ordering;
+
+    use super::{Estimate, Share, allocate};
     use crate::inputs::parse_input;
     use crate::json;
 
@@ -542,6 +554,38 @@ mod tests {
         ];
         for (sizes, ranges, counts) in cases {
             assert_eq!(allocate(sizes, ranges), counts, "{sizes:?} {ranges}");
+        }
+    }
+
+    #[test]
+    fn a_share_is_its_rows_per_range_compared_exactly() {
+        let share = |rows, ranges, segment| Share {
+            rows,
+            ranges,
+            segment,
+        };
+        for ((a, b), order) in [
+            // 60 / 1 against 100 / 2, both ways.
+            ((share(60, 1, 0), share(100, 2, 1)), Ordering::Greater),
+            ((share(100, 2, 1), share(60, 1, 0)), Ordering::Less),
+            // 1 / 3 is above 333333333 / 1000000000.
+            (
+                (share(1, 3, 0), share(333_333_333, 1_000_000_000, 1)),
+                Ordering::Greater,
+            ),
+            // On a tie, the lower segment comes first, as the largest.
+            ((share(50, 1, 0), share(100, 2, 1)), Ordering::Greater),
+            ((share(100, 2, 1), share(50, 1, 0)), Ordering::Less),
+        ] {
+            assert_eq!(
+                a.cmp(&b),
+                order,
+                "{} / {} against {} / {}",
+                a.rows,
+                a.ranges,
+                b.rows,
+                b.ranges
+            );
         }
     }
 }

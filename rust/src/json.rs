@@ -700,7 +700,7 @@ pub fn float_repr(float: f64) -> Result<String, JsonError> {
     if !float.is_finite() {
         let name = if float.is_nan() {
             "nan"
-        } else if float > 0.0 {
+        } else if float.is_sign_positive() {
             "inf"
         } else {
             "-inf"
@@ -717,7 +717,7 @@ pub fn float_repr(float: f64) -> Result<String, JsonError> {
     if !(-4..16).contains(&exponent) {
         let (first, rest) = digits.split_at(1);
         let point = if rest.is_empty() { "" } else { "." };
-        let exponent_sign = if exponent < 0 { '-' } else { '+' };
+        let exponent_sign = if exponent.is_negative() { '-' } else { '+' };
         return Ok(format!(
             "{sign}{first}{point}{rest}e{exponent_sign}{:02}",
             exponent.unsigned_abs()

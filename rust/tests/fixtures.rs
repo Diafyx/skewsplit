@@ -1,7 +1,8 @@
 //! Every planner fixture in `spec/fixtures/`, byte for byte (spec section 10),
 //! every hash fixture in `spec/fixtures/hash/` (section 16), every sample
-//! fixture in `spec/fixtures/sample/` (section 14), every array text fixture
-//! in `spec/fixtures/pg-array/` (section 12), and
+//! fixture in `spec/fixtures/sample/` (section 14), every `pg_stats` fixture
+//! in `spec/fixtures/pg-stats/` (section 13), every array text fixture in
+//! `spec/fixtures/pg-array/` (section 12), and
 //! the command line's output for the planner inputs of the fixtures, which
 //! must be the Python command line's.
 //! `make rust-conformance`, and the Rust leg of CI's conformance job, run
@@ -22,6 +23,7 @@ use skewsplit::error::SpecError;
 use skewsplit::hashing::hash_plan;
 use skewsplit::json::{self, Object, Value};
 use skewsplit::pgarray::parse_values;
+use skewsplit::pgstats::from_pg_stats;
 use skewsplit::plan::error_value;
 use skewsplit::planner::plan;
 use skewsplit::sample::from_sample;
@@ -33,15 +35,13 @@ struct Fixture {
 }
 
 /// The fixture folders this file runs, besides the planner fixtures at the top.
-const RUN: [&str; 3] = ["hash", "pg-array", "sample"];
+const RUN: [&str; 4] = ["hash", "pg-array", "pg-stats", "sample"];
 
 /// The fixture folders this crate doesn't run yet, because it hasn't ported
 /// what they test. A new folder fails
 /// `every_fixture_folder_is_run_or_not_ported_yet` until it is run here or
 /// listed.
-const NOT_PORTED_YET: [&str; 1] = [
-    "pg-stats", // converting pg_stats, spec section 13
-];
+const NOT_PORTED_YET: [&str; 0] = [];
 
 fn fixture_folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/fixtures")
@@ -212,6 +212,33 @@ fn every_sample_fixture_converts_byte_for_byte() {
     }
     assert!(
         inputs >= 10 && errors >= 20,
+        "{inputs} inputs, {errors} errors"
+    );
+}
+
+#[test]
+fn every_pg_stats_fixture_converts_byte_for_byte() {
+    let fixtures = fixtures("pg-stats");
+    assert!(fixtures.len() >= 40);
+    let (mut inputs, mut errors) = (0, 0);
+    for fixture in fixtures {
+        let actual = converted(from_pg_stats(&fixture.input));
+        if actual.get("error").is_some() {
+            errors += 1;
+        } else {
+            inputs += 1;
+        }
+        for indent in [None, Some(2)] {
+            assert_eq!(
+                actual.to_json(indent).unwrap(),
+                fixture.expected.to_json(indent).unwrap(),
+                "{}",
+                fixture.name
+            );
+        }
+    }
+    assert!(
+        inputs >= 10 && errors >= 30,
         "{inputs} inputs, {errors} errors"
     );
 }

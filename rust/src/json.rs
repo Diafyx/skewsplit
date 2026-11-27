@@ -88,6 +88,12 @@ impl Int {
         })
     }
 
+    /// The integer whose decimal digits are `text`: `0`, or digits that do
+    /// not start with a zero.
+    pub(crate) fn from_digits(text: String) -> Self {
+        Self { text }
+    }
+
     /// Whether the integer is below zero.
     #[must_use]
     pub fn is_negative(&self) -> bool {

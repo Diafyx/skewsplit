@@ -302,6 +302,19 @@ pub(crate) fn keys(
     optional: &[&str],
     what: &str,
 ) -> Result<(), SpecError> {
+    let missing = format!("{what} is missing");
+    let unknown = format!("{what} has unknown fields");
+    keys_with(object, required, optional, [&missing, &unknown])
+}
+
+/// [`keys`], with the start of each message given, such as `the statistics
+/// are missing` and `the statistics have unknown fields`.
+pub(crate) fn keys_with(
+    object: &Object,
+    required: &[&str],
+    optional: &[&str],
+    [missing_start, unknown_start]: [&str; 2],
+) -> Result<(), SpecError> {
     let missing: Vec<&str> = required
         .iter()
         .copied()
@@ -309,7 +322,7 @@ pub(crate) fn keys(
         .collect();
     if !missing.is_empty() {
         return Err(invalid_input(format!(
-            "{what} is missing {}",
+            "{missing_start} {}",
             missing.join(", ")
         )));
     }
@@ -321,7 +334,7 @@ pub(crate) fn keys(
     unknown.sort_unstable();
     if !unknown.is_empty() {
         return Err(invalid_input(format!(
-            "{what} has unknown fields: {}",
+            "{unknown_start}: {}",
             unknown.join(", ")
         )));
     }

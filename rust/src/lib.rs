@@ -8,8 +8,8 @@
 //! and writes it ([`json`]), the planner input checks ([`inputs`]), the
 //! range planner ([`planner`]) and the hash planner ([`hashing`]) with their
 //! plans and the plans' reports and snippets ([`plan`]), PostgreSQL's array
-//! text ([`pgarray`]), and the planner input from a sample of the column
-//! ([`sample`]).
+//! text ([`pgarray`]), and the planner input from PostgreSQL's statistics
+//! ([`pgstats`]) or from a sample of the column ([`sample`]).
 //!
 //! Both implementations follow the same behaviour spec, `spec/SPEC.md` in the
 //! repository, and pass the same golden fixtures.
@@ -21,11 +21,13 @@
 //! [Python package]: https://pypi.org/project/skewsplit/
 
 pub mod codecs;
+mod decimal;
 pub mod error;
 pub mod hashing;
 pub mod inputs;
 pub mod json;
 pub mod pgarray;
+pub mod pgstats;
 pub mod plan;
 pub mod planner;
 pub mod sample;

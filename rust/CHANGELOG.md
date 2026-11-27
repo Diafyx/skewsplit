@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0](https://github.com/Diafyx/skewsplit/compare/rust-v0.1.0...rust-v0.2.0) (2026-11-27)
+
+
+### Features
+
+* **rust:** port the hash planner to the core ([#129](https://github.com/Diafyx/skewsplit/issues/129)) ([b022671](https://github.com/Diafyx/skewsplit/commit/b0226716800380f9eba7bfba2b46ba373f7dda7d)), closes [#124](https://github.com/Diafyx/skewsplit/issues/124)
+* **rust:** port the pg_stats conversion to the core ([#132](https://github.com/Diafyx/skewsplit/issues/132)) ([2194fec](https://github.com/Diafyx/skewsplit/commit/2194fec1d51d2c16d1906533c8a906ec29e491fb)), closes [#126](https://github.com/Diafyx/skewsplit/issues/126)
+* **rust:** port the sample conversion to the core ([#131](https://github.com/Diafyx/skewsplit/issues/131)) ([da37cb8](https://github.com/Diafyx/skewsplit/commit/da37cb88c061df24b16076c9f8744061430130f5)), closes [#125](https://github.com/Diafyx/skewsplit/issues/125)
+
 ## 0.1.0 (2026-11-26)
 
 

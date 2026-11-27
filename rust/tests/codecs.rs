@@ -194,6 +194,11 @@ fn text_outside_the_form_is_invalid_value() {
         "12026-01-01",
         "2026-11-18 00:00:00",
         &fullwidth_date,
+        // ':' is the byte after '9', so without the digit check it would
+        // count as 10 and make these real dates.
+        "2026-0:-18",
+        "202:-11-18",
+        "2026-11-1:",
     ] {
         cases.push(("date", None, text));
     }
@@ -207,6 +212,9 @@ fn text_outside_the_form_is_invalid_value() {
         "2026-11-18 15:30:00.1234567",
         "2026-11-18 15:30:00+00",
         "2026-02-29 00:00:00",
+        "2026-11-18 1::30:00",
+        "2026-11-18 15:3::00",
+        "2026-11-18 15:30:3:",
     ] {
         cases.push(("timestamp", None, text));
     }
@@ -391,6 +399,18 @@ fn leap_days() {
     }
     for year in ["2026", "1900", "2100", "0001"] {
         assert!(date.parse(&format!("{year}-02-29")).is_err(), "{year}");
+    }
+    // February 29 of a year divisible by 400 is the last day of a 400-year
+    // era of days_from_civil, where civil_from_days needs every term.
+    let timestamp = codec("timestamp", None);
+    for year in ["2000", "1600", "0400"] {
+        let day = format!("{year}-02-29");
+        assert_eq!(date.text(date.parse(&day).unwrap()).unwrap(), day);
+        let time = format!("{day} 23:59:59");
+        assert_eq!(
+            timestamp.text(timestamp.parse(&time).unwrap()).unwrap(),
+            time
+        );
     }
     // Every day of a leap year round-trips, and the days are consecutive.
     let first = date.parse("2024-01-01").unwrap();

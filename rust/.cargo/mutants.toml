@@ -1,0 +1,24 @@
+# cargo-mutants settings, which make rust-mutation and the nightly run use.
+#
+# exclude_re leaves out mutants that cannot change any result, so no test can
+# catch them. Each regex names one place exactly: the file, line and column,
+# as `cargo mutants --list` shows it. A change above such a line moves it, and
+# the nightly run then lists the mutant as missed again, so nothing else is
+# ever hidden. Update the line then, and keep the reason, which is also in a
+# comment at the line.
+exclude_re = [
+    # split_points, `lower + 1` to `lower - 1` or `lower * 1`: G leaves out the
+    # dominant value at `lower`, so G(lower) - base is 0, below every target,
+    # and a search that starts at `lower` or below finds the same x_hi.
+    '^src/planner\.rs:341:65: replace \+ with [-*] in split_points',
+    # split_points, `max_ordinal + 1` to `max_ordinal * 1`: when no ordinal up
+    # to MAX reaches the target, the search up to MAX + 1 picks x_lo = MAX,
+    # and the one up to MAX picks x_hi = MAX, at a negative distance: the same
+    # point.
+    '^src/planner\.rs:354:52: replace \+ with \* in split_points',
+    # split_points, `x_lo > lower` to `>=`: x_lo is `lower` only when x_hi is
+    # `first`. Picking `lower` adds no point, as its G is `base`, and a later
+    # target, at least half of G(first) - base, picks `first`, so the points
+    # are the same.
+    '^src/planner\.rs:373:42: replace > with >= in split_points',
+]

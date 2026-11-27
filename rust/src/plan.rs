@@ -473,7 +473,7 @@ fn fixed_3(x: f64) -> String {
         return "nan".to_owned();
     }
     if x.is_infinite() {
-        return if x > 0.0 { "inf" } else { "-inf" }.to_owned();
+        return if x.is_sign_positive() { "inf" } else { "-inf" }.to_owned();
     }
     format!("{x:.3}")
 }

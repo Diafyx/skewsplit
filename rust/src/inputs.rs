@@ -195,7 +195,7 @@ pub fn parse_input(data: &Value) -> Result<PlanInput, SpecError> {
 
 /// The scale to give `codec_for`. A scale beyond `i64` is refused here, with
 /// the message `codec_for` would give it, since `codec_for` takes an `i64`.
-fn scale_of(type_name: &str, scale: Option<&Int>) -> Result<Option<i64>, SpecError> {
+pub(crate) fn scale_of(type_name: &str, scale: Option<&Int>) -> Result<Option<i64>, SpecError> {
     let Some(scale) = scale else {
         return Ok(None);
     };

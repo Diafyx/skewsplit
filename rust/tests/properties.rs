@@ -3,7 +3,8 @@
 //! Hypothesis, of reading array text (spec section 12), as
 //! `python/tests/property/test_pgarray_properties.py` does, and of hash
 //! predicates (section 16), as `python/tests/property/test_hash_properties.py`
-//! does.
+//! does, and of converting a sample (section 14), as
+//! `python/tests/property/test_sample_properties.py` does.
 //!
 //! `PROPTEST_PROFILE` sets the number of cases of each test, as
 //! `HYPOTHESIS_PROFILE` sets the examples for Python: `dev` (the default) 100,
@@ -15,7 +16,7 @@
 //! counterpart here, since the standard library has no SQL engine. The SQL
 //! text is the same in both implementations, as the golden fixtures check.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -28,6 +29,7 @@ use skewsplit::json::{Object, Value};
 use skewsplit::pgarray::{parse_array, parse_values};
 use skewsplit::plan::{Kind, Op, Plan, Predicate, WarningCode};
 use skewsplit::planner::plan;
+use skewsplit::sample::from_sample;
 
 const TYPES: [&str; 7] = [
     "int2",
@@ -589,5 +591,209 @@ proptest! {
         let expected: Vec<Kind> = (0..n).map(Kind::Hash).collect();
         prop_assert_eq!(remainders, expected.iter().collect::<Vec<_>>());
         prop_assert_eq!(result.warnings[0].code, WarningCode::FullScans);
+    }
+}
+
+/// The special values of `numeric`.
+const NUMERIC_SPECIAL: [&str; 3] = ["NaN", "Infinity", "-Infinity"];
+
+/// A sample as the Python test draws it: the ordinary values' counts, the
+/// sampled NULL rows, the special values' counts, `T` (`None` for the sample
+/// size), and the entries in a random order.
+#[derive(Clone, Debug)]
+struct Sampled {
+    counts: BTreeMap<i128, i128>,
+    nulls: i128,
+    specials: BTreeMap<&'static str, i128>,
+    total: Option<i128>,
+    entries: Vec<(String, i128)>,
+}
+
+fn samples() -> impl Strategy<Value = Sampled> {
+    // A few heavy values among many light ones, so every rule of section 14 is reached.
+    let light = proptest::collection::btree_map(-1_000_000..=1_000_000_i128, 1..=3_i128, 0..=1500);
+    let heavy = proptest::collection::btree_map(-50..=50_i128, 1..=5000_i128, 0..=6);
+    let specials =
+        proptest::collection::btree_map(select(&NUMERIC_SPECIAL[..]), 1..=100_i128, 0..=3);
+    let total = prop_oneof![Just(None), (0..=1_000_000_000_000_i128).prop_map(Some)];
+    (light, heavy, specials, 0..=5000_i128, total).prop_flat_map(
+        |(light, heavy, specials, nulls, total)| {
+            let mut counts = light;
+            counts.extend(heavy);
+            let mut pairs: Vec<(String, i128)> = counts
+                .iter()
+                .map(|(value, rows)| (value.to_string(), *rows))
+                .collect();
+            pairs.extend(
+                specials
+                    .iter()
+                    .map(|(value, rows)| ((*value).to_owned(), *rows)),
+            );
+            let fixed = (counts, nulls, specials, total);
+            (Just(fixed), Just(pairs).prop_shuffle()).prop_map(
+                |((counts, nulls, specials, total), entries)| Sampled {
+                    counts,
+                    nulls,
+                    specials,
+                    total,
+                    entries,
+                },
+            )
+        },
+    )
+}
+
+fn sample_entry(value: &str, rows: i128) -> Value {
+    object([("value", Value::from(value)), ("rows", Value::from(rows))])
+}
+
+/// `count × total / size` rounded half up, from the quotient and the
+/// remainder, so it shares no code with the conversion's formula.
+fn scaled(count: i128, total: i128, size: i128) -> i128 {
+    if size == 0 {
+        return 0;
+    }
+    let (quotient, remainder) = (count * total / size, count * total % size);
+    quotient + i128::from(2 * remainder >= size)
+}
+
+/// Section 14 step by step, writing out the list of values one by one: the
+/// NULL rows, `mcv`, the histogram and the unestimated rows.
+fn sample_reference(drawn: &Sampled, total: i128) -> (i128, Value, Value, i128) {
+    let ordinary: i128 = drawn.counts.values().sum();
+    let size = drawn.nulls + ordinary + drawn.specials.values().sum::<i128>();
+    let is_common = |rows: i128| rows >= 2 && rows * 1000 >= ordinary;
+    let listed: Vec<i128> = drawn
+        .counts
+        .iter()
+        .filter(|&(_, &rows)| !is_common(rows))
+        .flat_map(|(&value, &rows)| std::iter::repeat_n(value, usize::try_from(rows).unwrap()))
+        .collect();
+    let null_rows = scaled(drawn.nulls, total, size);
+    let unestimated = scaled(drawn.specials.values().sum(), total, size);
+    let mcv: Vec<(i128, i128)> = drawn
+        .counts
+        .iter()
+        .filter(|&(_, &rows)| is_common(rows))
+        .map(|(&value, &rows)| (value, scaled(rows, total, size).max(1)))
+        .collect();
+    let histogram = if listed.is_empty() {
+        Value::Null
+    } else {
+        let h = i128::try_from(listed.len()).unwrap();
+        let m = (h - 1).clamp(1, 1000);
+        let rows =
+            (total - null_rows - mcv.iter().map(|&(_, rows)| rows).sum::<i128>() - unestimated)
+                .max(0);
+        let bounds = (0..=m)
+            .map(|j| Value::from(listed[usize::try_from(j * (h - 1) / m).unwrap()].to_string()))
+            .collect();
+        object([
+            ("bounds", Value::Array(bounds)),
+            ("rows", Value::from(rows)),
+        ])
+    };
+    let mcv = mcv
+        .into_iter()
+        .map(|(value, rows)| sample_entry(&value.to_string(), rows))
+        .collect();
+    (null_rows, Value::Array(mcv), histogram, unestimated)
+}
+
+fn sample_input(
+    type_name: &str,
+    partitions: i128,
+    total: i128,
+    nulls: i128,
+    entries: Vec<Value>,
+) -> Value {
+    let mut input = Object::new();
+    input.insert("column", Value::from("c"));
+    input.insert("type", Value::from(type_name));
+    if type_name == "numeric" {
+        input.insert("scale", Value::from(0));
+    }
+    input.insert("partitions", Value::from(partitions));
+    input.insert("rows_estimate", Value::from(total));
+    input.insert("sample_null_rows", Value::from(nulls));
+    input.insert("sample_values", Value::Array(entries));
+    Value::Object(input)
+}
+
+/// Rows of a column, each NULL or an int8 value from a narrow or a wide
+/// range, with lengths spread evenly on a log scale up to 4000, so most lists
+/// are short and every case stays fast.
+fn column_rows() -> impl Strategy<Value = Vec<Option<i128>>> {
+    let row = prop_oneof![
+        Just(None),
+        (-30..=30_i128).prop_map(Some),
+        (-10_000..=10_000_i128).prop_map(Some),
+    ];
+    (0..=12_u32).prop_flat_map(move |bits| vec(row.clone(), 0..=(1_usize << bits).min(4000)))
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn the_conversion_follows_section_14_step_by_step(drawn in samples()) {
+        let size = drawn.nulls + drawn.entries.iter().map(|(_, rows)| rows).sum::<i128>();
+        let total = drawn.total.unwrap_or(size);
+        let entries = drawn.entries.iter().map(|(value, rows)| sample_entry(value, *rows)).collect();
+        let result = from_sample(&sample_input("numeric", 4, total, drawn.nulls, entries)).unwrap();
+        let (null_rows, mcv, histogram, unestimated) = sample_reference(&drawn, total);
+        prop_assert_eq!(result.get("null_rows"), Some(&Value::from(null_rows)));
+        prop_assert_eq!(result.get("mcv"), Some(&mcv));
+        prop_assert_eq!(result.get("histogram"), Some(&histogram));
+        let source = result.get("source").unwrap();
+        prop_assert_eq!(source.get("unestimated_rows"), Some(&Value::from(unestimated)));
+        prop_assert_eq!(source.get("sample_rows"), Some(&Value::from(size)));
+        prop_assert!(mcv.as_array().unwrap().len() <= 1000);
+        if let Some(bounds) = histogram.get("bounds").and_then(Value::as_array) {
+            prop_assert!(bounds.len() <= 1001);
+        }
+    }
+
+    // Spec section 14: when every row was read, the NULL and value predicates
+    // are exact and each range reads within 2 x B rows of its estimate.
+    #[test]
+    fn a_plan_from_every_row_is_within_two_buckets_of_the_rows(
+        rows in column_rows(),
+        partitions in 1..=64_i128,
+    ) {
+        let mut counts: BTreeMap<i128, i128> = BTreeMap::new();
+        for value in rows.iter().flatten() {
+            *counts.entry(*value).or_default() += 1;
+        }
+        let nulls = i128::try_from(rows.iter().filter(|row| row.is_none()).count()).unwrap();
+        let total = i128::try_from(rows.len()).unwrap();
+        let entries = counts.iter().map(|(value, rows)| sample_entry(&value.to_string(), *rows)).collect();
+        let converted = from_sample(&sample_input("int8", partitions, total, nulls, entries)).unwrap();
+        let bucket = match converted.get("histogram").and_then(Value::as_object) {
+            Some(histogram) => {
+                let rows = histogram.get("rows").and_then(Value::as_i128).unwrap();
+                let buckets = i128::try_from(histogram.get("bounds").and_then(Value::as_array).unwrap().len()).unwrap() - 1;
+                (rows + buckets - 1) / buckets
+            }
+            None => 0,
+        };
+        let result = plan(&converted).unwrap();
+        prop_assert_eq!(result.total_rows, total);
+        let codec = codec_for("int8", None).unwrap();
+        // Each distinct value matches exactly one predicate, which the range
+        // planner's own properties check, so its rows go to the first that matches.
+        let mut actual = vec![0; result.parts.len()];
+        actual[0] = nulls;
+        for (&value, &rows) in &counts {
+            let at = result.parts.iter().position(|part| matches(&codec, part, value)).unwrap();
+            actual[at] += rows;
+        }
+        for (part, actual) in result.parts.iter().zip(actual) {
+            if matches!(part.kind, Kind::Range { .. }) {
+                prop_assert!((actual - part.estimated_rows).abs() <= 2 * bucket, "{}", part.sql);
+            } else {
+                prop_assert_eq!(actual, part.estimated_rows, "{}", part.sql);
+            }
+        }
     }
 }

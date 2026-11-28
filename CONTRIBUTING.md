@@ -97,7 +97,9 @@ Use a throwaway database all the same.
   other.
 - Rust tests live next to the code they test (`#[cfg(test)]` modules) or in
   `rust/tests/`. Like the Python core, the crate depends on the standard
-  library only.
+  library only. Its command line plans from files and does not connect to a
+  database, so code that reads PostgreSQL goes in the Python package; see
+  [ADR 0003](docs/adr/0003-rust-command-line-reads-files.md).
 - An exclusion from coverage needs a reason on the same line:
   `# pragma: no cover -- only reached on Windows`. A bare `# pragma: no cover`
   excludes nothing.

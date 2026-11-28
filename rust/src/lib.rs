@@ -1,10 +1,11 @@
 //! skewsplit plans balanced JDBC partition predicates for Spark from a
 //! column's distribution.
 //!
-//! This crate is the Rust port of the [Python package], and is not usable
-//! yet. The library will hold the pure core: no I/O and no dependencies. The
-//! command line is the `skewsplit` binary, which plans from a stats file. So
-//! far the library has the value codecs ([`codecs`]), JSON as Python reads
+//! This crate is the Rust port of the [Python package]'s pure core: no I/O
+//! and no dependencies. Its API can still change before 1.0. The command line
+//! is the `skewsplit` binary, which plans from a stats file and does not
+//! connect to a database; reading PostgreSQL stays in the Python package.
+//! The library has the value codecs ([`codecs`]), JSON as Python reads
 //! and writes it ([`json`]), the planner input checks ([`inputs`]), the
 //! range planner ([`planner`]) and the hash planner ([`hashing`]) with their
 //! plans and the plans' reports and snippets ([`plan`]), PostgreSQL's array

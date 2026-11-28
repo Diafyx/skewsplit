@@ -1,4 +1,15 @@
 //! The error the core returns for invalid input (spec sections 9, 12 and 13).
+//!
+//! The code is part of the contract and the message is not, so match on the
+//! code in code.
+//!
+//! ```
+//! use skewsplit::{ErrorCode, inputs::InputBuilder};
+//!
+//! let error = InputBuilder::new("id", "int4", 0).build().unwrap_err();
+//! assert_eq!(error.code(), ErrorCode::InvalidPartitions);
+//! assert_eq!(error.code().as_str(), "invalid_partitions");
+//! ```
 
 use std::fmt;
 

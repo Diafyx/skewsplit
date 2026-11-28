@@ -59,6 +59,35 @@ wrong command line, and 3 if the stats cannot be read or the column cannot be
 planned. The output contains real values from the column: treat it like the
 data.
 
+## Library
+
+The library plans in your own Rust code. Build the input of spec section 1
+with `InputBuilder`, or read it from JSON with `json::parse` and plan it
+with `planner::plan`:
+
+```rust
+use skewsplit::{inputs::InputBuilder, planner::plan_input};
+
+let input = InputBuilder::new("customer_id", "int4", 4)
+    .null_rows(100)
+    .common_value("42", 500)
+    .histogram(["1", "250", "500", "750", "1000"], 400)
+    .build()?;
+let plan = plan_input(&input);
+let predicates: Vec<&str> = plan.predicates(); // for Spark's JDBC reader
+println!("{}", plan.report());
+```
+
+Values are text as PostgreSQL prints them. `build` checks the input as spec
+section 9 says, and returns a `SpecError` with the section's error code.
+A plan is also JSON (`Plan::to_json`), the skew report (`Plan::report`), and
+PySpark or Scala code (`Plan::to_pyspark`, `Plan::to_scala`). `hashing`
+plans hash predicates for a column of another type, and `pgstats` and
+`sample` build the input from PostgreSQL's statistics or from a sample. The
+API can still change before 1.0. The
+[documentation on docs.rs](https://docs.rs/skewsplit) has an example for
+each module.
+
 ## Supported Rust versions
 
 The minimum supported Rust version is 1.95. It is always a stable release at

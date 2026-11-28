@@ -1,4 +1,5 @@
-//! Read and check the planner input (spec sections 1 and 9).
+//! Read and check the planner input (spec sections 1 and 9), from JSON with
+//! [`parse_input`], or in code with [`InputBuilder`].
 //!
 //! ```
 //! use skewsplit::{inputs::parse_input, json};
@@ -34,7 +35,8 @@ const REQUIRED: [&str; 6] = [
 const OPTIONAL: [&str; 2] = ["scale", "source"];
 
 /// A checked planner input, with values as ordinals. Only [`parse_input`]
-/// makes one, so every `PlanInput` has passed the checks of spec section 9.
+/// and [`InputBuilder::build`] make one, so every `PlanInput` has passed the
+/// checks of spec section 9.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlanInput {
     column: String,
@@ -94,6 +96,142 @@ impl PlanInput {
     #[must_use]
     pub fn source(&self) -> &Value {
         &self.source
+    }
+}
+
+/// Build a planner input of spec section 1 in code, without writing JSON.
+///
+/// Values are text in the form of spec section 2, as PostgreSQL prints them,
+/// such as `"42"`, `"2026-11-18"` or `"1.50"`. Row counts are unsigned, so a
+/// negative count cannot be given. [`build`](Self::build) checks the input
+/// as [`parse_input`] checks the same input as JSON, with the same errors.
+///
+/// ```
+/// use skewsplit::{inputs::InputBuilder, planner::plan_input};
+///
+/// let input = InputBuilder::new("customer_id", "int4", 4)
+///     .null_rows(100)
+///     .common_value("42", 500)
+///     .common_value("7", 60)
+///     .histogram(["1", "250", "500", "750", "1000"], 400)
+///     .build()?;
+/// let plan = plan_input(&input);
+/// assert_eq!(plan.total_rows, 1060);
+/// // 42 holds more than a partition's share of the rows, so it is on its own.
+/// assert!(plan.predicates().contains(&r#""customer_id" = 42"#));
+/// # Ok::<(), skewsplit::SpecError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+#[must_use]
+pub struct InputBuilder {
+    column: String,
+    type_name: String,
+    scale: Option<u32>,
+    partitions: u32,
+    null_rows: u64,
+    mcv: Vec<(String, u64)>,
+    histogram: Option<(Vec<String>, u64)>,
+    source: Option<Value>,
+}
+
+impl InputBuilder {
+    /// An input for `column` of the type `type_name`, such as `int4` or
+    /// `numeric`, split into at most `partitions` predicates besides the NULL
+    /// predicate. It has no NULL rows, no common values and no histogram
+    /// until they are given.
+    pub fn new(column: impl Into<String>, type_name: impl Into<String>, partitions: u32) -> Self {
+        Self {
+            column: column.into(),
+            type_name: type_name.into(),
+            scale: None,
+            partitions,
+            null_rows: 0,
+            mcv: Vec::new(),
+            histogram: None,
+            source: None,
+        }
+    }
+
+    /// The scale of a `numeric` column: the digits after the point.
+    pub fn scale(mut self, scale: u32) -> Self {
+        self.scale = Some(scale);
+        self
+    }
+
+    /// Rows where the column is NULL.
+    pub fn null_rows(mut self, rows: u64) -> Self {
+        self.null_rows = rows;
+        self
+    }
+
+    /// A common value and its rows. Each call adds one, in any order.
+    pub fn common_value(mut self, value: impl Into<String>, rows: u64) -> Self {
+        self.mcv.push((value.into(), rows));
+        self
+    }
+
+    /// An equi-depth histogram: its bounds in order, and the rows of its
+    /// buckets, which leave out the common values.
+    pub fn histogram<T: Into<String>>(
+        mut self,
+        bounds: impl IntoIterator<Item = T>,
+        rows: u64,
+    ) -> Self {
+        self.histogram = Some((bounds.into_iter().map(Into::into).collect(), rows));
+        self
+    }
+
+    /// Where the distribution came from, copied to the plan's `source`. It
+    /// is free-form JSON, such as `{"statistics": "pg_stats"}`.
+    pub fn source(mut self, source: Value) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// The input as the JSON of spec section 1, in that section's order: what
+    /// [`parse_input`] reads, and what the command line reads from a file.
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        let rows = |rows: u64| Value::from(i128::from(rows));
+        let text = |text: &String| Value::from(text.as_str());
+        let mut fields = Object::new();
+        fields.insert("column", text(&self.column));
+        fields.insert("type", text(&self.type_name));
+        if let Some(scale) = self.scale {
+            fields.insert("scale", Value::from(i128::from(scale)));
+        }
+        fields.insert("partitions", Value::from(i128::from(self.partitions)));
+        fields.insert("null_rows", rows(self.null_rows));
+        let mcv = self.mcv.iter().map(|(value, count)| {
+            let mut entry = Object::new();
+            entry.insert("value", text(value));
+            entry.insert("rows", rows(*count));
+            Value::Object(entry)
+        });
+        fields.insert("mcv", Value::Array(mcv.collect()));
+        let histogram = self
+            .histogram
+            .as_ref()
+            .map_or(Value::Null, |(bounds, count)| {
+                let mut histogram = Object::new();
+                histogram.insert("bounds", Value::Array(bounds.iter().map(text).collect()));
+                histogram.insert("rows", rows(*count));
+                Value::Object(histogram)
+            });
+        fields.insert("histogram", histogram);
+        if let Some(source) = &self.source {
+            fields.insert("source", source.clone());
+        }
+        Value::Object(fields)
+    }
+
+    /// Check the input and convert its values to ordinals.
+    ///
+    /// # Errors
+    ///
+    /// As [`parse_input`] for the same input as JSON (spec section 9).
+    pub fn build(&self) -> Result<PlanInput, SpecError> {
+        parse_input(&self.to_value())
     }
 }
 

@@ -1,6 +1,22 @@
 //! A plan: the predicates, their estimated rows and the warnings (spec
 //! section 10), as JSON, as a report for people, and as Python or Scala code
 //! that reads the table.
+//!
+//! ```
+//! use skewsplit::{inputs::InputBuilder, planner::plan_input};
+//!
+//! let input = InputBuilder::new("id", "int4", 2)
+//!     .histogram(["1", "101"], 100)
+//!     .build()?;
+//! let plan = plan_input(&input);
+//! // The NULL predicate, then the two ranges with their estimated rows.
+//! let rows: Vec<i128> = plan.parts.iter().map(|part| part.estimated_rows).collect();
+//! assert_eq!(rows, [0, 50, 50]);
+//! assert_eq!(plan.skew_score(), Some(1.0));
+//! assert!(plan.to_json(Some(2))?.contains(r#""spec_version""#));
+//! assert!(plan.to_pyspark().contains("spark.read.jdbc(url, table, predicates=predicates"));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 use std::fmt::Write as _;
 

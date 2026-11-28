@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use skewsplit::ErrorCode;
-use skewsplit::inputs::{PlanInput, parse_input};
+use skewsplit::inputs::{InputBuilder, PlanInput, parse_input};
 use skewsplit::json::{self, Value};
 
 // The input of spec section 1.
@@ -426,5 +426,124 @@ fn every_fixture_input_is_checked_as_its_fixture_says() {
                 Some(input.codec().type_name())
             );
         }
+    }
+}
+
+/// The builder that writes `input`, or `None` if no builder can: a field of
+/// another JSON type, a negative count or an unknown field.
+fn builder_for(input: &Value) -> Option<InputBuilder> {
+    const KEYS: [&str; 8] = [
+        "column",
+        "type",
+        "scale",
+        "partitions",
+        "null_rows",
+        "mcv",
+        "histogram",
+        "source",
+    ];
+    let fields = input.as_object()?;
+    if !fields.keys().all(|key| KEYS.contains(&key)) {
+        return None;
+    }
+    let text = |key: &str| fields.get(key)?.as_str();
+    let count = |value: &Value| u64::try_from(value.as_i128()?).ok();
+    let partitions = u32::try_from(fields.get("partitions")?.as_i128()?).ok()?;
+    let mut builder = InputBuilder::new(text("column")?, text("type")?, partitions)
+        .null_rows(count(fields.get("null_rows")?)?);
+    if let Some(scale) = fields.get("scale") {
+        builder = builder.scale(u32::try_from(scale.as_i128()?).ok()?);
+    }
+    for entry in fields.get("mcv")?.as_array()? {
+        let value = entry.get("value")?.as_str()?;
+        builder = builder.common_value(value, count(entry.get("rows")?)?);
+    }
+    match fields.get("histogram")? {
+        Value::Null => {}
+        Value::Object(histogram) => {
+            let bounds = histogram.get("bounds")?.as_array()?;
+            let bounds: Vec<&str> = bounds.iter().map(Value::as_str).collect::<Option<_>>()?;
+            builder = builder.histogram(bounds, count(histogram.get("rows")?)?);
+        }
+        _ => return None,
+    }
+    if let Some(source) = fields.get("source") {
+        builder = builder.source(source.clone());
+    }
+    Some(builder)
+}
+
+// Every fixture input that a builder can write: the builder builds the same
+// input or fails with the same error, and its JSON gives the same builder.
+// (A fixture can list its keys in another order than section 1.)
+#[test]
+fn the_builder_writes_and_checks_every_fixture_input_as_json_does() {
+    let mut built = 0;
+    for (name, input, _) in fixture_inputs() {
+        let Some(builder) = builder_for(&input) else {
+            continue;
+        };
+        assert_eq!(builder.build(), parse_input(&input), "{name}");
+        assert_eq!(
+            builder_for(&builder.to_value()).as_ref(),
+            Some(&builder),
+            "{name}"
+        );
+        built += 1;
+    }
+    assert!(built >= 40, "{built}");
+}
+
+#[test]
+fn a_new_builder_has_no_null_rows_common_values_or_histogram() {
+    let expected = json::parse(
+        r#"{"column": "id", "type": "int4", "partitions": 2, "null_rows": 0,
+            "mcv": [], "histogram": null}"#,
+    )
+    .unwrap();
+    assert_eq!(InputBuilder::new("id", "int4", 2).to_value(), expected);
+}
+
+#[test]
+fn the_builder_writes_the_fields_in_the_order_of_section_1() {
+    let builder = InputBuilder::new(String::from("amount"), "numeric", 2)
+        .source(json::parse(r#"{"statistics": "pg_stats"}"#).unwrap())
+        .histogram(vec![String::from("1.5"), String::from("9")], 10)
+        .common_value("2", 3)
+        .null_rows(1)
+        .scale(2);
+    let expected = r#"{"column": "amount", "type": "numeric", "scale": 2, "partitions": 2, "null_rows": 1, "mcv": [{"value": "2", "rows": 3}], "histogram": {"bounds": ["1.5", "9"], "rows": 10}, "source": {"statistics": "pg_stats"}}"#;
+    assert_eq!(builder.to_value().to_json(None).unwrap(), expected);
+    let input = builder.build().unwrap();
+    assert_eq!(input.mcv(), [(200, 3)]);
+    assert_eq!(input.bounds(), [150, 900]);
+}
+
+#[test]
+fn the_builder_fails_as_json_does() {
+    let base = || InputBuilder::new("id", "int4", 2);
+    let cases = [
+        (
+            InputBuilder::new("id", "int4", 0),
+            ErrorCode::InvalidPartitions,
+        ),
+        (InputBuilder::new("", "int4", 2), ErrorCode::InvalidColumn),
+        (
+            InputBuilder::new("id", "text", 2),
+            ErrorCode::UnsupportedType,
+        ),
+        (base().null_rows(u64::MAX), ErrorCode::InvalidRows),
+        (base().common_value("7", 0), ErrorCode::InvalidRows),
+        (
+            base().common_value("7", 1).common_value("7", 2),
+            ErrorCode::DuplicateValue,
+        ),
+        (base().common_value("seven", 1), ErrorCode::InvalidValue),
+        (base().histogram(["1"], 1), ErrorCode::InvalidHistogram),
+    ];
+    for (builder, code) in cases {
+        let error = builder.build().unwrap_err();
+        assert_eq!(error.code(), code, "{builder:?}");
+        assert_eq!(Err(error), parse_input(&builder.to_value()));
     }
 }

@@ -318,9 +318,11 @@ environment needs the same change in the crate's settings, or the publish fails.
 
 crates.io trusts a workflow only for a crate that already exists, so the first
 release, 0.1.0, published with an API token saved as the secret
-`CARGO_REGISTRY_TOKEN` of the `crates-io` environment. After the first release
-that publishes with Trusted Publishing, delete that secret and revoke the token
-on crates.io.
+`CARGO_REGISTRY_TOKEN` of the `crates-io` environment. 0.2.0 was the first
+release to publish with Trusted Publishing; after it, that secret was deleted
+and the token revoked on crates.io. The job still passes the short-lived token
+to `cargo publish` in the variable `CARGO_REGISTRY_TOKEN`, which is the name
+cargo reads.
 
 ## Supported versions
 

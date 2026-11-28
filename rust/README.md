@@ -4,14 +4,14 @@ The Rust port of [skewsplit](https://github.com/Diafyx/skewsplit), which plans
 balanced, index-friendly JDBC partition predicates for Spark from a column's
 distribution.
 
-> **Status: not usable yet.** So far this crate has the range planner and
-> the hash planner, which give byte for byte the plans of the Python package,
-> with the value codecs, the input checks, JSON as Python reads and writes it,
-> PostgreSQL's array text, the planner input from PostgreSQL's statistics or
-> from a sample of a column, and a command line that plans from a stats file.
-> Reading the statistics from a database is only in the
-> [Python package](https://pypi.org/project/skewsplit/), which you can use
-> today.
+> **Status: the core is complete; the API can still change before 1.0.**
+> The library has the range planner and the hash planner, which give byte for
+> byte the plans of the Python package, with the value codecs, the input
+> checks, JSON as Python reads and writes it, PostgreSQL's array text, and the
+> planner input from PostgreSQL's statistics or from a sample of a column. The
+> command line plans from a stats file. Reading the database stays in the
+> [Python package](https://pypi.org/project/skewsplit/), by design: see ADR
+> 0003 in [`docs/adr`](https://github.com/Diafyx/skewsplit/tree/main/docs/adr).
 
 Both implementations follow the same behaviour spec,
 [`spec/SPEC.md`](https://github.com/Diafyx/skewsplit/blob/main/spec/SPEC.md),
@@ -38,7 +38,8 @@ gh attestation verify skewsplit-0.1.0-x86_64-unknown-linux-musl.tar.gz --repo Di
 
 `skewsplit plan` plans from a column's distribution in a JSON file (spec
 section 1), as `skewsplit stats` of the Python package writes it. It doesn't
-connect to PostgreSQL:
+connect to PostgreSQL, and won't: the crate has no dependencies, and reading
+the database, verify mode and choosing a strategy stay in the Python package.
 
 ```sh
 skewsplit stats --table orders --column customer_id > stats.json  # the Python package
